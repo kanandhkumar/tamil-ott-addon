@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: tamil-ott-addon
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: TMDB_API_KEY
+        sync: false
+    autoDeploy: true
