@@ -54,10 +54,6 @@ app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
 });
 
 app.get("/meta/:type/:id.json", async (req, res) => {
-  const { type, id } = req.params;
-  if (id.startsWith("tmdb:")) {
-    return res.json({ meta: { id, type, name: "Tamil Content" } });
-  }
   res.json({ meta: {} });
 });
 
