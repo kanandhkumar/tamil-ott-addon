@@ -12,12 +12,7 @@ const manifest = {
     { type: 'movie', id: 'zee5_movies', name: 'ZEE5 Movies' },
     { type: 'movie', id: 'hotstar_movies', name: 'Hotstar Movies' },
     { type: 'movie', id: 'aha_movies', name: 'Aha Movies' },
-    { type: 'movie', id: 'sonyliv_movies', name: 'SonyLIV Movies' },
-    { type: 'series', id: 'sunnxt_series', name: 'SunNXT Series' },
-    { type: 'series', id: 'zee5_series', name: 'ZEE5 Series' },
-    { type: 'series', id: 'hotstar_series', name: 'Hotstar Series' },
-    { type: 'series', id: 'aha_series', name: 'Aha Series' },
-    { type: 'series', id: 'sonyliv_series', name: 'SonyLIV Series' }
+    { type: 'movie', id: 'sonyliv_movies', name: 'SonyLIV Movies' }
   ]
 };
 
@@ -27,18 +22,38 @@ builder.defineCatalogHandler(({ type, id }) => {
   const provider = id.split('_')[0];
 
   const data = {
-    sunnxt: ['Vikram', 'Jailer', 'Leo'],
-    zee5: ['Master', 'Bigil', 'Jai Bhim'],
-    hotstar: ['Suzhal', 'Inspector Rishi', 'Modern Love Chennai'],
-    aha: ['Vilangu', 'Pettaikaali', 'Vadhandhi'],
-    sonyliv: ['Ponniyin Selvan', 'Viduthalai', 'Farhana']
+    sunnxt: [
+      { name: 'Vikram', poster: 'https://image.tmdb.org/t/p/w500/mJMBFdyQrDvhHd8aGP8s0mW6Jq0.jpg' },
+      { name: 'Jailer', poster: 'https://image.tmdb.org/t/p/w500/8Z5QkNXYMd8JX85N7BQbMQa8F0B.jpg' },
+      { name: 'Leo', poster: 'https://image.tmdb.org/t/p/w500/jTiDY0tkMBkTHiJRXj9HaA8dBX1.jpg' }
+    ],
+    zee5: [
+      { name: 'Master', poster: 'https://image.tmdb.org/t/p/w500/2Sj0oM0cMVLVTFHhEeNfO7GXNV0.jpg' },
+      { name: 'Bigil', poster: 'https://image.tmdb.org/t/p/w500/5VEJlv5OQw5rlWbfUgNW9j18xwM.jpg' },
+      { name: 'Jai Bhim', poster: 'https://image.tmdb.org/t/p/w500/5fwoinMEBWVD7Hj9cKD4o0TkKHG.jpg' }
+    ],
+    hotstar: [
+      { name: 'Suzhal', poster: 'https://image.tmdb.org/t/p/w500/qCyFBa4XAj7ybVXjBuXoqKKkPDO.jpg' },
+      { name: 'Inspector Rishi', poster: 'https://image.tmdb.org/t/p/w500/4z6p0xC8B3l6vVQpSgV3GkD7RkY.jpg' },
+      { name: 'Modern Love Chennai', poster: 'https://image.tmdb.org/t/p/w500/7wZ8vT8LwM3K6UQ5R2G3m2Q7Z9x.jpg' }
+    ],
+    aha: [
+      { name: 'Vilangu', poster: 'https://image.tmdb.org/t/p/w500/9MN2Vt0K4lYl8c1f8Q3xV5z9lY1.jpg' },
+      { name: 'Pettaikaali', poster: 'https://image.tmdb.org/t/p/w500/uTQx4m4l5vN3mWQ2jQm0Tqj6M4M.jpg' },
+      { name: 'Vadhandhi', poster: 'https://image.tmdb.org/t/p/w500/mXkQVi9DLDl1RnfVlLBHMPGNBiH.jpg' }
+    ],
+    sonyliv: [
+      { name: 'Ponniyin Selvan', poster: 'https://image.tmdb.org/t/p/w500/hJ7w2Yn9Yh8n9HLMiZmjS66UWyj.jpg' },
+      { name: 'Viduthalai', poster: 'https://image.tmdb.org/t/p/w500/2eMGd1KFXHF0lGmyMfNHAe8Zyze.jpg' },
+      { name: 'Farhana', poster: 'https://image.tmdb.org/t/p/w500/6QZ3v7m4wK9M2v8xN1b2c3d4e5f.jpg' }
+    ]
   };
 
-  const metas = (data[provider] || ['Tamil Title']).map((name, i) => ({
+  const metas = (data[provider] || []).map((item, i) => ({
     id: `${provider}_${type}_${i}`,
     type,
-    name,
-    poster: `https://via.placeholder.com/300x450?text=${encodeURIComponent(name)}`
+    name: item.name,
+    poster: item.poster
   }));
 
   return Promise.resolve({ metas });
