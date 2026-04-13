@@ -4,142 +4,31 @@ const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG  = "https://image.tmdb.org/t/p/w500";
 const TMDB_KEY  = process.env.TMDB_API_KEY || "";
 
-// ── Verified Tamil IMDB IDs per platform ─────────────────────────────────────
-// Sources: Each platform's official Tamil catalog (verified Apr 2026)
+// JustWatch GraphQL API (unofficial, no key needed)
+const JW_API = "https://apis.justwatch.com/graphql";
 
-const PLATFORM_DATA = {
-
-  sunnxt_movies: [
-    "tt6016236","tt8143610","tt7144870","tt6719968","tt3263904",
-    "tt9764938","tt12412888","tt9032398","tt15655792","tt14539740",
-    "tt11271038","tt10166622","tt13615776","tt11035246","tt9032400",
-    "tt8367814","tt6712648","tt15671028","tt13121618","tt12077116",
-  ],
-  sunnxt_series: [
-    "tt8291224","tt14519434","tt9032401","tt15256628","tt14444952",
-    "tt11847842","tt10954984","tt13615776","tt8291220","tt12077116",
-  ],
-  sunnxt_webseries: [
-    "tt8291224","tt15256628","tt14444952","tt11847842","tt10954984",
-    "tt14519434","tt9032401","tt13615776","tt8291220","tt12077116",
-  ],
-  sunnxt_shorts: [
-    "tt9019536","tt8108198","tt7504726","tt9032400","tt8367814",
-    "tt6712648","tt9764938","tt10399902","tt15671028","tt9032398",
-  ],
-
-  zee5_movies: [
-    "tt9019536","tt10399902","tt8367814","tt6712648","tt9764938",
-    "tt8108198","tt7504726","tt9032400","tt15671028","tt9032398",
-    "tt11745960","tt10166622","tt14513804","tt11271038","tt12749430",
-    "tt5078116","tt8143610","tt7144870","tt6016236","tt6719968",
-  ],
-  zee5_series: [
-    "tt14519434","tt9032401","tt8291224","tt8291220","tt11847842",
-    "tt10954984","tt15256628","tt14444952","tt13615776","tt12077116",
-  ],
-  zee5_webseries: [
-    "tt14519434","tt11847842","tt10954984","tt15256628","tt14444952",
-    "tt13615776","tt8291224","tt9032401","tt8291220","tt12077116",
-  ],
-  zee5_shorts: [
-    "tt9019536","tt10399902","tt8367814","tt6712648","tt9764938",
-    "tt15671028","tt9032398","tt8108198","tt7504726","tt9032400",
-  ],
-
-  jiohotstar_movies: [
-    "tt13121618","tt15655792","tt14539740","tt6016236","tt8143610",
-    "tt9019536","tt10399902","tt12412888","tt9032398","tt15671028",
-    "tt7144870","tt6719968","tt8367814","tt6712648","tt9764938",
-    "tt3263904","tt9032400","tt8108198","tt7504726","tt5078116",
-  ],
-  jiohotstar_series: [
-    "tt8291224","tt14519434","tt12077116","tt9032401","tt15256628",
-    "tt14444952","tt13615776","tt11847842","tt10954984","tt8291220",
-  ],
-  jiohotstar_webseries: [
-    "tt8291224","tt14519434","tt12077116","tt15256628","tt14444952",
-    "tt13615776","tt11847842","tt10954984","tt9032401","tt8291220",
-  ],
-  jiohotstar_shorts: [
-    "tt9019536","tt10399902","tt13121618","tt15655792","tt14539740",
-    "tt12412888","tt9032398","tt15671028","tt8367814","tt6712648",
-  ],
-
-  aha_movies: [
-    "tt9032398","tt15671028","tt11745960","tt14513804","tt11271038",
-    "tt10166622","tt12749430","tt9019536","tt10399902","tt8367814",
-    "tt6712648","tt9764938","tt8108198","tt7504726","tt9032400",
-    "tt6016236","tt8143610","tt7144870","tt6719968","tt3263904",
-  ],
-  aha_webseries: [
-    "tt15256628","tt14444952","tt13615776","tt11847842","tt10954984",
-    "tt8291224","tt14519434","tt12077116","tt9032401","tt8291220",
-  ],
-  aha_shorts: [
-    "tt9032398","tt15671028","tt9019536","tt10399902","tt8367814",
-    "tt6712648","tt9764938","tt8108198","tt7504726","tt9032400",
-  ],
-
-  mxplayer_movies: [
-    "tt10166622","tt12749430","tt14513804","tt11271038","tt11745960",
-    "tt9032398","tt15671028","tt9019536","tt10399902","tt8367814",
-    "tt6712648","tt9764938","tt8108198","tt7504726","tt9032400",
-    "tt6016236","tt8143610","tt7144870","tt6719968","tt5078116",
-  ],
-  mxplayer_series: [
-    "tt11847842","tt10954984","tt15256628","tt14444952","tt13615776",
-    "tt8291224","tt14519434","tt12077116","tt9032401","tt8291220",
-  ],
-  mxplayer_webseries: [
-    "tt11847842","tt10954984","tt15256628","tt14444952","tt13615776",
-    "tt8291224","tt14519434","tt12077116","tt9032401","tt8291220",
-  ],
-  mxplayer_shorts: [
-    "tt10166622","tt12749430","tt9019536","tt10399902","tt8367814",
-    "tt6712648","tt9764938","tt15671028","tt9032398","tt8108198",
-  ],
-
-  kalaignar_movies: [
-    "tt3263904","tt5078116","tt6016236","tt6712648","tt6719968",
-    "tt7144870","tt7504726","tt8108198","tt8143610","tt8367814",
-    "tt9019536","tt9032400","tt9764938","tt10399902","tt15671028",
-    "tt9032398","tt12412888","tt13121618","tt15655792","tt14539740",
-  ],
-  kalaignar_series: [
-    "tt8291224","tt14519434","tt9032401","tt12077116","tt8291220",
-    "tt15256628","tt14444952","tt13615776","tt11847842","tt10954984",
-  ],
-  kalaignar_webseries: [
-    "tt8291224","tt14519434","tt9032401","tt12077116","tt8291220",
-    "tt15256628","tt14444952","tt13615776","tt11847842","tt10954984",
-  ],
-  kalaignar_shorts: [
-    "tt9019536","tt8108198","tt7504726","tt9032400","tt3263904",
-    "tt6016236","tt8143610","tt7144870","tt6719968","tt5078116",
-  ],
-
-  sonyliv_movies: [
-    "tt8367814","tt6712648","tt9764938","tt10399902","tt9019536",
-    "tt15671028","tt9032398","tt11745960","tt14513804","tt11271038",
-    "tt10166622","tt12749430","tt8108198","tt7504726","tt9032400",
-    "tt6016236","tt8143610","tt7144870","tt6719968","tt3263904",
-  ],
-  sonyliv_series: [
-    "tt9032401","tt8291220","tt8291224","tt14519434","tt12077116",
-    "tt10954984","tt11847842","tt15256628","tt14444952","tt13615776",
-  ],
-  sonyliv_webseries: [
-    "tt9032401","tt8291220","tt10954984","tt11847842","tt15256628",
-    "tt14444952","tt13615776","tt8291224","tt14519434","tt12077116",
-  ],
-  sonyliv_shorts: [
-    "tt8367814","tt6712648","tt9764938","tt10399902","tt9019536",
-    "tt15671028","tt9032398","tt8108198","tt7504726","tt9032400",
-  ],
+// JustWatch provider IDs for India
+const JW_PROVIDERS = {
+  sunnxt:     "sun_nxt",
+  zee5:       "zee5",
+  jiohotstar: "hotstar",
+  aha:        "aha",
+  mxplayer:   "mxplayer",
+  kalaignar:  "kalaignar_tv",
+  sonyliv:    "sonyliv",
 };
 
-// ── TMDB metadata cache ───────────────────────────────────────────────────────
+const GENRE_MAP = {
+  Action:"ACTION", Drama:"DRAMA", Comedy:"COMEDY", Thriller:"THRILLER",
+  Romance:"ROMANCE", Horror:"HORROR", Family:"FAMILY", "Sci-Fi":"SCIENCE_FICTION",
+  Animation:"ANIMATION", Crime:"CRIME",
+};
+
+// Cache
+const cache = new Map();
+const CACHE_TTL = 60 * 60 * 1000;
+
+// TMDB metadata cache
 const metaCache = new Map();
 
 async function tmdbGet(path, params = {}) {
@@ -161,63 +50,158 @@ async function getMetaByImdb(imdbId, type) {
   const data = await tmdbGet(`/find/${imdbId}`, { external_source: "imdb_id" });
   if (!data) return null;
   const r = (data[`${mediaType}_results`] || [])[0];
-  if (!r) return null;
+  if (!r?.poster_path) return null;
   const meta = {
     id: imdbId, type,
     name: r.title || r.name || "Unknown",
-    poster: r.poster_path ? `${TMDB_IMG}${r.poster_path}` : null,
+    poster: `${TMDB_IMG}${r.poster_path}`,
     background: r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
     description: r.overview || undefined,
     releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4) || undefined,
     imdbRating: r.vote_average ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
   };
-  if (!meta.poster) return null;
   metaCache.set(imdbId, meta);
   return meta;
 }
 
-// Search via TMDB
-async function searchTamil(type, query, page) {
+// Query JustWatch GraphQL for Tamil content by provider
+async function jwQuery(provider, contentType, page, genre) {
+  const offset = (page - 1) * 20;
+  const jwType = contentType === "movie" ? "MOVIE" : "SHOW";
+  const genreFilter = genre && GENRE_MAP[genre] ? `genres: ["${GENRE_MAP[genre]}"]` : "";
+
+  const query = `{
+    popularTitles(
+      country: "IN"
+      first: 20
+      offset: ${offset}
+      filter: {
+        objectTypes: [${jwType}]
+        packages: ["${provider}"]
+        languages: ["ta"]
+        ${genreFilter}
+      }
+      sortBy: POPULAR
+      sortRandomSeed: 0
+    ) {
+      edges {
+        node {
+          id
+          objectType
+          content(country: "IN", language: "en") {
+            title
+            originalReleaseYear
+            externalIds {
+              imdbId
+            }
+            posterUrl(profile: S718, format: JPG)
+            backdropUrl(profile: S1920, format: JPG)
+            shortDescription
+            genres { translation(language: "en") }
+            scoring { imdbScore }
+          }
+        }
+      }
+    }
+  }`;
+
+  try {
+    const res = await fetch(JW_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+      timeout: 12000,
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+function jwNodeToMeta(node, type) {
+  if (!node?.content) return null;
+  const c = node.content;
+  const imdbId = c.externalIds?.imdbId;
+  if (!imdbId) return null;
+  const poster = c.posterUrl || null;
+  if (!poster) return null;
+  return {
+    id: imdbId,
+    type,
+    name: c.title || "Unknown",
+    poster,
+    background: c.backdropUrl || undefined,
+    description: c.shortDescription || undefined,
+    releaseInfo: c.originalReleaseYear ? String(c.originalReleaseYear) : undefined,
+    imdbRating: c.scoring?.imdbScore ? String(parseFloat(c.scoring.imdbScore).toFixed(1)) : undefined,
+    genres: c.genres?.map(g => g.translation).filter(Boolean) || [],
+  };
+}
+
+// TMDB discover fallback - Tamil language
+async function tmdbDiscover(type, page) {
   const mediaType = type === "movie" ? "movie" : "tv";
-  const data = await tmdbGet(`/search/${mediaType}`, { query, page });
+  const data = await tmdbGet(`/discover/${mediaType}`, {
+    page,
+    with_original_language: "ta",
+    sort_by: "popularity.desc",
+    "vote_count.gte": 20,
+  });
   if (!data?.results) return [];
-  return data.results
-    .filter(r => r.original_language === "ta" && r.poster_path)
-    .slice(0, 20)
-    .map(r => ({
-      id: `tmdb:${r.id}`, type,
-      name: r.title || r.name,
-      poster: `${TMDB_IMG}${r.poster_path}`,
-      releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4),
-    }));
+  const results = await Promise.all(
+    data.results
+      .filter(r => r.original_language === "ta" && r.poster_path)
+      .slice(0, 20)
+      .map(async r => {
+        const ext = await tmdbGet(`/${mediaType}/${r.id}/external_ids`);
+        const imdbId = ext?.imdb_id;
+        if (!imdbId) return null;
+        return {
+          id: imdbId, type,
+          name: r.title || r.name,
+          poster: `${TMDB_IMG}${r.poster_path}`,
+          background: r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
+          description: r.overview || undefined,
+          releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4),
+          imdbRating: r.vote_average ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
+        };
+      })
+  );
+  return results.filter(Boolean);
 }
 
 async function fetchCatalog(catalogId, type, extra = {}) {
-  const skip   = parseInt(extra.skip || 0);
-  const page   = Math.floor(skip / 20) + 1;
-  const search = extra.search || null;
+  const skip     = parseInt(extra.skip || 0);
+  const page     = Math.floor(skip / 20) + 1;
+  const genre    = extra.genre || null;
+  const search   = extra.search || null;
+  const platform = catalogId.split("_")[0];
+  const mediaType = type === "movie" ? "movie" : "tv";
 
-  if (search) return searchTamil(type, search, page);
+  if (search) return tmdbDiscover(type, page);
 
-  const ids = PLATFORM_DATA[catalogId] || [];
-  const pageIds = ids.slice(skip, skip + 20);
-  if (!pageIds.length) return [];
+  const cacheKey = `${catalogId}:${page}:${genre || ""}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
 
-  if (TMDB_KEY) {
-    // Fetch in batches of 5 to avoid timeouts
-    const results = [];
-    for (let i = 0; i < pageIds.length; i += 5) {
-      const batch = pageIds.slice(i, i + 5);
-      const batchResults = await Promise.all(
-        batch.map(id => getMetaByImdb(id, type))
-      );
-      results.push(...batchResults.filter(Boolean));
+  const provider = JW_PROVIDERS[platform];
+  let results = [];
+
+  // Try JustWatch GraphQL first
+  if (provider) {
+    const data = await jwQuery(provider, mediaType, page, genre);
+    const edges = data?.data?.popularTitles?.edges || [];
+    if (edges.length > 0) {
+      results = edges.map(e => jwNodeToMeta(e.node, type)).filter(Boolean);
     }
-    return results;
   }
 
-  // No TMDB key — return basic meta (Cinemeta fills details)
-  return pageIds.map(id => ({ id, type, name: id }));
+  // Fallback to TMDB discover
+  if (!results.length) {
+    results = await tmdbDiscover(type, page);
+  }
+
+  cache.set(cacheKey, { data: results, ts: Date.now() });
+  return results;
 }
 
 module.exports = { fetchCatalog };
