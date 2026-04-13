@@ -8,7 +8,7 @@ const TMDB_KEY = process.env.TMDB_API_KEY;
 const manifest = {
   id: "com.kanandhkumar.tamilott",
   name: "Tamil OTT Catalog",
-  version: "3.0.0", // Upgraded version
+  version: "3.1.0",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
@@ -20,7 +20,10 @@ const manifest = {
   idPrefixes: ["tt"]
 };
 
-// 1. Gemini AI Search - Using Gemini 3 Flash (Latest 2026)
+/**
+ * 1. Gemini 3 AI Search
+ * Uses a highly specific prompt to prevent hallucinations like "Mexico".
+ */
 async function askGemini(platform, type) {
   if (!GEMINI_KEY) return null;
   try {
@@ -29,24 +32,37 @@ async function askGemini(platform, type) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `List 5 IMDb IDs for popular Tamil ${type} on ${platform} India as a JSON array. Only return the array.` }] }],
+        contents: [{ 
+          parts: [{ 
+            text: `Act as a Stremio metadata expert. Provide a JSON array of 5 valid IMDb IDs for high-rated Tamil ${type}s currently streaming on ${platform} India. 
+            Rules:
+            - Must be strictly Tamil language content.
+            - Do NOT include random titles or non-Tamil content.
+            - Ensure they are ${type}s, not individual episodes.
+            - Return ONLY the JSON array of strings.` 
+          }] 
+        }],
         generationConfig: {
-          response_mime_type: "application/json" // Gemini 3 feature: Forces JSON output
+          response_mime_type: "application/json"
         }
       })
     });
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return JSON.parse(text); // Clean JSON thanks to Gemini 3
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+    return JSON.parse(text);
   } catch (e) {
-    console.error("Gemini 3 Error:", e);
+    console.error("Gemini Precision Error:", e);
     return null;
   }
 }
 
-// 2. Metadata Fetcher (TMDB + Cinemeta Fallback)
+/**
+ * 2. Metadata Fetcher
+ * Optimized TMDB lookup with Cinemeta fallback and Metahub poster generation.
+ */
 async function getMeta(imdbId, type) {
   try {
+    // Attempt TMDB lookup first for high-quality posters
     if (TMDB_KEY) {
       const tmdbUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id`;
       const tmdbRes = await fetch(tmdbUrl);
@@ -65,6 +81,7 @@ async function getMeta(imdbId, type) {
       }
     }
 
+    // Fallback to Cinemeta/Metahub if TMDB doesn't have the ID
     const cinemetaRes = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`);
     const cinemetaData = await cinemetaRes.json();
     if (cinemetaData.meta) {
@@ -77,10 +94,14 @@ async function getMeta(imdbId, type) {
       };
     }
     return null;
-  } catch (e) { return null; }
+  } catch (e) { 
+    return null; 
+  }
 }
 
-// 3. Routes
+/**
+ * 3. Express Routes
+ */
 app.get("/manifest.json", (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.json(manifest);
@@ -91,15 +112,27 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
   const type = req.params.type;
   const platform = req.params.id.split("_")[0].toLowerCase();
   
+  // Hardcoded backups if AI fails
   const FALLBACK = {
-    netflix: ["tt30141680"], prime: ["tt31281232"], sunnxt: ["tt17057710"], aha: ["tt13647612"]
+    netflix: ["tt30141680", "tt21069722"], 
+    prime: ["tt31281232", "tt15327088"], 
+    sunnxt: ["tt17057710"], 
+    aha: ["tt13647612"]
   };
 
   let ids = await askGemini(platform, type);
-  if (!ids || ids.length === 0) ids = FALLBACK[platform];
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    ids = FALLBACK[platform] || ["tt30141680"];
+  }
 
   const metas = await Promise.all(ids.map(id => getMeta(id, type)));
   res.json({ metas: metas.filter(m => m !== null) });
 });
 
-app.listen(process.env.PORT || 10000);
+// Root help page
+app.get("/", (req, res) => {
+  res.send("Tamil OTT Addon is active. Use /manifest.json to install in Stremio.");
+});
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server live on ${PORT}`));
