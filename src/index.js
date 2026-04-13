@@ -3,13 +3,13 @@ const fetch = require("node-fetch");
 const app = express();
 
 const TMDB_KEY = process.env.TMDB_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
-// 1. Manifest Definition
 const manifest = {
   id: "com.kanandhkumar.tamilott",
   name: "Tamil OTT Catalog",
-  version: "1.4.2",
+  version: "1.4.3",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
@@ -21,7 +21,26 @@ const manifest = {
   idPrefixes: ["tt"]
 };
 
-// 2. Metadata Fetcher (TMDB)
+// 1. Gemini Search Logic
+async function askGemini(platform, type) {
+  if (!GEMINI_KEY) return null;
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `Return a JSON array of IMDB IDs for popular Tamil ${type} on ${platform} India. Example: ["tt30141680"]` }] }]
+      })
+    });
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const match = text.match(/\[[\s\S]*?\]/);
+    return match ? JSON.parse(match[0]) : null;
+  } catch (e) { return null; }
+}
+
+// 2. TMDB Metadata Logic
 async function getMeta(imdbId, type) {
   if (!TMDB_KEY) return null;
   try {
@@ -31,7 +50,7 @@ async function getMeta(imdbId, type) {
     const r = (type === "movie" ? data.movie_results : data.tv_results)?.[0];
     if (!r) return null;
     return {
-      id: imdbId, type: type, name: r.title || r.name,
+      id: imdbId, type, name: r.title || r.name,
       poster: `https://image.tmdb.org/t/p/w500${r.poster_path}`,
       description: r.overview
     };
@@ -46,9 +65,10 @@ app.get("/manifest.json", (req, res) => {
 
 app.get("/catalog/:type/:id.json", async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const platform = req.params.id.split("_")[0].toLowerCase();
+  const type = req.params.type;
+  const platformId = req.params.id.toLowerCase();
   
-  // Guaranteed Test IDs
+  // Hardcoded Fallbacks for testing
   const FALLBACK = {
     netflix: ["tt30141680"], // Maharaja
     prime: ["tt31281232"],   // Raayan
@@ -56,12 +76,20 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
     aha: ["tt13647612"]      // Chitha
   };
 
-  const ids = FALLBACK[platform] || ["tt30141680"];
-  const metas = await Promise.all(ids.map(id => getMeta(id, req.params.type)));
+  // Extract platform (e.g., "netflix" from "netflix_tamil")
+  const platform = platformId.split("_")[0];
   
+  // Try Gemini first
+  let ids = await askGemini(platform, type);
+  
+  // If Gemini fails, use the hardcoded list
+  if (!ids || ids.length === 0) {
+    ids = FALLBACK[platform] || ["tt30141680"];
+  }
+
+  const metas = await Promise.all(ids.map(id => getMeta(id, type)));
   res.json({ metas: metas.filter(Boolean) });
 });
 
-// 4. Start Server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
