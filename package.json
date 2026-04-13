@@ -2,11 +2,11 @@
   "name": "tamil-ott",
   "version": "1.0.0",
   "main": "index.js",
+  "license": "MIT",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@stremiocloud/addon-sdk": "1.1.0",
-    "node-fetch": "3.3.2"
+    "stremio-addon-sdk": "^1.6.10"
   }
 }
