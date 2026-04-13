@@ -1,4 +1,4 @@
-const { addonBuilder } = require('@stremiocloud/addon-sdk');
+const { addonBuilder } = require('stremio-addon-sdk');
 
 const builder = new addonBuilder({
   id: 'com.kanand.tamilott',
