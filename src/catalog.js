@@ -2,7 +2,7 @@ const fetch = require("node-fetch");
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG  = "https://image.tmdb.org/t/p/w500";
-const TMDB_KEY  = process.env.TMDB_API_KEY || "";
+const TMDB_KEY  = process.env.TMDB_API_KEY || "F55610914fb734a9afd993aa70a951d7";
 
 const PLATFORM_DATA = {
   netflix_tamil: ["tt30141680", "tt21064582", "tt27495049", "tt28091871", "tt32313352"], 
@@ -17,9 +17,6 @@ const PLATFORM_DATA = {
 };
 
 async function getMetaByImdb(imdbId, type) {
-  if (!TMDB_KEY) {
-     return { id: imdbId, type, name: "Missing API Key", poster: "https://via.placeholder.com/500x750?text=API+Key+Error" };
-  }
   try {
     const url = `${TMDB_BASE}/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id&language=en-US`;
     const res = await fetch(url);
