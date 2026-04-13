@@ -1,30 +1,49 @@
 const fetch = require("node-fetch");
 
-const TMDB_BASE = "https://api.themoviedb.org/3";
-const TMDB_IMG  = "https://image.tmdb.org/t/p/w500";
-const TMDB_KEY  = process.env.TMDB_API_KEY || "";
-const REGION    = "IN";
+const TMDB_BASE    = "https://api.themoviedb.org/3";
+const TMDB_IMG     = "https://image.tmdb.org/t/p/w500";
+const TMDB_KEY     = process.env.TMDB_API_KEY || "";
+const RAPID_KEY    = process.env.RAPIDAPI_KEY || "";
+const RAPID_HOST   = "streaming-availability.p.rapidapi.com";
+const RAPID_BASE   = "https://streaming-availability.p.rapidapi.com";
+
+// Streaming Availability API service IDs for India
+const SERVICE_IDS = {
+  sunnxt:     "sun",
+  zee5:       "zee5",
+  jiohotstar: "hotstar",
+  aha:        "aha",
+  mxplayer:   "mxplayer",
+  sonyliv:    "sonyliv",
+  kalaignar:  "sun",   // closest available
+};
 
 const GENRE_MAP = {
-  Action:28, Drama:18, Comedy:35, Thriller:53, Romance:10749,
-  Horror:27, Family:10751, "Sci-Fi":878, Animation:16, Crime:80,
-  Reality:10764, News:10763,
+  Action:"action", Drama:"drama", Comedy:"comedy", Thriller:"thriller",
+  Romance:"romance", Horror:"horror", Family:"family", "Sci-Fi":"scifi",
+  Animation:"animation", Crime:"crime",
 };
 
-// TMDB provider IDs for India
-const PROVIDER_ID_MAP = {
-  sunnxt:     [237],
-  zee5:       [232],
-  jiohotstar: [122, 1759],  // Hotstar + JioCinema (merged Feb 2025)
-  aha:        [532],
-  mxplayer:   [515],
-  kalaignar:  [237, 232],   // Approximated via Sun/Zee
-  sonyliv:    [11],
-};
+// Cache per platform+type
+const catalogCache = new Map();
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
-// Cache: platform → list of meta items
-const platformCache = new Map();
-const CACHE_TTL = 45 * 60 * 1000; // 45 min
+async function rapidGet(path, params = {}) {
+  if (!RAPID_KEY) return null;
+  const url = new URL(`${RAPID_BASE}${path}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        "x-rapidapi-key":  RAPID_KEY,
+        "x-rapidapi-host": RAPID_HOST,
+      },
+      timeout: 12000,
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
 
 async function tmdbGet(path, params = {}) {
   if (!TMDB_KEY) return null;
@@ -39,117 +58,91 @@ async function tmdbGet(path, params = {}) {
   } catch { return null; }
 }
 
-// Fetch watch providers for a single title and check if it's on a given platform
-async function isOnPlatform(tmdbId, mediaType, providerIds) {
-  const data = await tmdbGet(`/${mediaType}/${tmdbId}/watch/providers`);
-  if (!data?.results?.[REGION]) return false;
-  const region = data.results[REGION];
-  const available = [
-    ...(region.flatrate || []),
-    ...(region.free || []),
-    ...(region.ads || []),
-  ];
-  return available.some(p => providerIds.includes(p.provider_id));
+// Convert Streaming Availability show to Stremio meta
+function showToMeta(show, type) {
+  if (!show) return null;
+  // Prefer IMDB ID so Cinemeta + Torrentio work
+  const id = show.imdbId || (show.tmdbId ? `tmdb:${show.tmdbId}` : null);
+  if (!id) return null;
+  const poster = show.imageSet?.verticalPoster?.w480
+    || show.imageSet?.verticalPoster?.w360
+    || show.posterURLs?.["500"]
+    || null;
+  if (!poster) return null;
+  return {
+    id,
+    type,
+    name: show.title || show.originalTitle || "Unknown",
+    poster,
+    background: show.imageSet?.horizontalPoster?.w1440
+      || show.imageSet?.horizontalPoster?.w1080 || undefined,
+    description: show.overview || undefined,
+    releaseInfo: show.releaseYear ? String(show.releaseYear) : undefined,
+    imdbRating: show.rating ? String((show.rating / 10).toFixed(1)) : undefined,
+    genres: show.genres?.map(g => g.name) || [],
+  };
 }
 
-// Get IMDB ID for a TMDB item
-const imdbCache = new Map();
-async function getImdbId(tmdbId, mediaType) {
-  const key = `${mediaType}:${tmdbId}`;
-  if (imdbCache.has(key)) return imdbCache.get(key);
-  const data = await tmdbGet(`/${mediaType}/${tmdbId}/external_ids`);
-  const id = data?.imdb_id || null;
-  if (id) imdbCache.set(key, id);
-  return id;
-}
+// Fetch platform-specific Tamil catalog via Streaming Availability API
+async function fetchFromStreamingAPI(platform, type, page, genre) {
+  const serviceId = SERVICE_IDS[platform];
+  if (!serviceId) return [];
 
-// Discover Tamil content across multiple pages and filter by platform provider
-async function buildPlatformCatalog(platform, mediaType) {
-  const cacheKey = `${platform}:${mediaType}`;
-  const cached = platformCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
+  const showType = type === "movie" ? "movie" : "series";
+  const params = {
+    country:   "in",
+    service:   serviceId,
+    type:      showType,
+    language:  "ta",        // Tamil language filter
+    orderBy:   "popularity_alltime",
+    orderDirection: "desc",
+    page:      String(page),
+    output_language: "en",
+  };
 
-  const providerIds = PROVIDER_ID_MAP[platform] || [];
-  const results = [];
-  const seen = new Set();
-
-  // Fetch up to 5 pages of Tamil content
-  for (let page = 1; page <= 5 && results.length < 40; page++) {
-    const data = await tmdbGet(`/discover/${mediaType}`, {
-      page,
-      with_original_language: "ta",
-      sort_by: "popularity.desc",
-      "vote_count.gte": 5,
-      ...(mediaType === "movie"
-        ? { "primary_release_date.gte": "2015-01-01" }
-        : { "first_air_date.gte": "2015-01-01" }),
-    });
-
-    if (!data?.results?.length) break;
-
-    // Check each result for platform availability in parallel batches of 5
-    const items = data.results.filter(r =>
-      r.original_language === "ta" && r.poster_path && !seen.has(r.id)
-    );
-
-    for (let i = 0; i < items.length; i += 5) {
-      const batch = items.slice(i, i + 5);
-      await Promise.all(batch.map(async (r) => {
-        if (seen.has(r.id)) return;
-        seen.add(r.id);
-
-        const onPlatform = providerIds.length > 0
-          ? await isOnPlatform(r.id, mediaType, providerIds)
-          : true;
-
-        if (!onPlatform) return;
-
-        const imdbId = await getImdbId(r.id, mediaType);
-        if (!imdbId) return;
-
-        results.push({
-          id: imdbId,
-          type: mediaType === "movie" ? "movie" : "series",
-          name: r.title || r.name || "Unknown",
-          poster: `${TMDB_IMG}${r.poster_path}`,
-          background: r.backdrop_path
-            ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
-          description: r.overview || undefined,
-          releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4),
-          imdbRating: r.vote_average
-            ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
-        });
-      }));
-
-      if (results.length >= 40) break;
-    }
+  if (genre && GENRE_MAP[genre]) {
+    params.genre = GENRE_MAP[genre];
   }
 
-  platformCache.set(cacheKey, { data: results, ts: Date.now() });
-  return results;
+  const data = await rapidGet("/shows/search/filters", params);
+  if (!data?.shows?.length) return [];
+
+  return data.shows.map(s => showToMeta(s, type)).filter(Boolean);
 }
 
-// Search Tamil content
-async function searchTamil(type, query, page) {
+// Fallback: TMDB discover for Tamil content
+async function tmdbDiscover(type, page, genre) {
   const mediaType = type === "movie" ? "movie" : "tv";
-  const data = await tmdbGet(`/search/${mediaType}`, { query, page });
+  const params = {
+    page,
+    with_original_language: "ta",
+    sort_by: "popularity.desc",
+    "vote_count.gte": 10,
+  };
+  if (genre && GENRE_MAP[genre]) params.with_genres = genre;
+
+  const data = await tmdbGet(`/discover/${mediaType}`, params);
   if (!data?.results) return [];
-  const items = data.results.filter(r => r.original_language === "ta" && r.poster_path).slice(0, 10);
-  const results = await Promise.all(items.map(async r => {
-    const imdbId = await getImdbId(r.id, mediaType);
+
+  const items = data.results.filter(r => r.original_language === "ta" && r.poster_path);
+  const results = await Promise.all(items.slice(0, 20).map(async r => {
+    const ext = await tmdbGet(`/${mediaType}/${r.id}/external_ids`);
+    const imdbId = ext?.imdb_id;
     if (!imdbId) return null;
     return {
-      id: imdbId,
-      type,
+      id: imdbId, type,
       name: r.title || r.name,
       poster: `${TMDB_IMG}${r.poster_path}`,
+      background: r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
+      description: r.overview || undefined,
       releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4),
+      imdbRating: r.vote_average ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
     };
   }));
   return results.filter(Boolean);
 }
 
-// Seed fallback — real IMDB IDs
+// Seed fallback
 const SEED_MOVIES = [
   { id:"tt6016236",  name:"Vikram",             poster:"https://image.tmdb.org/t/p/w500/mJMBFdyQrDvhHd8aGP8s0mW6Jq0.jpg", releaseInfo:"2022" },
   { id:"tt8143610",  name:"Master",             poster:"https://image.tmdb.org/t/p/w500/2Sj0oM0cMVLVTFHhEeNfO7GXNV0.jpg", releaseInfo:"2021" },
@@ -158,33 +151,51 @@ const SEED_MOVIES = [
   { id:"tt10399902", name:"Jai Bhim",           poster:"https://image.tmdb.org/t/p/w500/5fwoinMEBWVD7Hj9cKD4o0TkKHG.jpg", releaseInfo:"2021" },
 ];
 const SEED_SERIES = [
-  { id:"tt8291224",  name:"Suzhal",   poster:"https://image.tmdb.org/t/p/w500/qCyFBa4XAj7ybVXjBuXoqKKkPDO.jpg", releaseInfo:"2022" },
-  { id:"tt14519434", name:"Vadhandhi",poster:"https://image.tmdb.org/t/p/w500/mXkQVi9DLDl1RnfVlLBHMPGNBiH.jpg", releaseInfo:"2022" },
+  { id:"tt8291224",  name:"Suzhal",    poster:"https://image.tmdb.org/t/p/w500/qCyFBa4XAj7ybVXjBuXoqKKkPDO.jpg", releaseInfo:"2022" },
+  { id:"tt14519434", name:"Vadhandhi", poster:"https://image.tmdb.org/t/p/w500/mXkQVi9DLDl1RnfVlLBHMPGNBiH.jpg", releaseInfo:"2022" },
 ];
 
 async function fetchCatalog(catalogId, type, extra = {}) {
   const skip   = parseInt(extra.skip || 0);
+  const page   = Math.floor(skip / 20) + 1;
   const genre  = extra.genre || null;
   const search = extra.search || null;
   const platform = catalogId.split("_")[0];
-  const mediaType = type === "movie" ? "movie" : "tv";
 
-  if (!TMDB_KEY) {
+  // No keys at all — seed fallback
+  if (!RAPID_KEY && !TMDB_KEY) {
     const seed = type === "movie" ? SEED_MOVIES : SEED_SERIES;
     return seed.slice(skip, skip + 20).map(m => ({ ...m, type }));
   }
 
-  if (search) return searchTamil(type, search, 1);
+  // Search: use TMDB
+  if (search) return tmdbDiscover(type, page, null);
 
-  // Build/fetch platform-specific catalog
-  let items = await buildPlatformCatalog(platform, mediaType);
+  // Check cache
+  const cacheKey = `${platform}:${type}:${page}:${genre || ""}`;
+  const cached = catalogCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
 
-  // Genre filter
-  if (genre && GENRE_MAP[genre]) {
-    items = items.filter(m => m.genres && m.genres.includes(genre));
+  let results = [];
+
+  // Try Streaming Availability API first
+  if (RAPID_KEY) {
+    results = await fetchFromStreamingAPI(platform, type, page, genre);
   }
 
-  return items.slice(skip, skip + 20);
+  // Fallback to TMDB discover if no results
+  if (!results.length && TMDB_KEY) {
+    results = await tmdbDiscover(type, page, genre);
+  }
+
+  // Fallback to seed
+  if (!results.length) {
+    const seed = type === "movie" ? SEED_MOVIES : SEED_SERIES;
+    results = seed.map(m => ({ ...m, type }));
+  }
+
+  catalogCache.set(cacheKey, { data: results, ts: Date.now() });
+  return results.slice(0, 20);
 }
 
 module.exports = { fetchCatalog };
