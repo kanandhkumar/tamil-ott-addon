@@ -1,10 +1,10 @@
 {
   "name": "tamil-ott",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/index.js",
   "license": "MIT",
   "scripts": {
-    "start": "node index.js"
+    "start": "node src/index.js"
   },
   "dependencies": {
     "stremio-addon-sdk": "^1.6.10"
