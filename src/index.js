@@ -1,62 +1,68 @@
-const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
+const express = require("express");
+const cors    = require("cors");
+const manifest = require("./manifest");
+const { fetchCatalog } = require("./catalog");
 
-const manifest = {
-  id: 'com.kanand.tamilott',
-  version: '1.0.0',
-  name: 'Tamil OTT',
-  description: 'Tamil OTT catalogs for Stremio',
-  resources: ['catalog'],
-  types: ['movie', 'series'],
-  catalogs: [
-    { type: 'movie', id: 'sunnxt_movies', name: 'SunNXT Movies' },
-    { type: 'movie', id: 'zee5_movies', name: 'ZEE5 Movies' },
-    { type: 'movie', id: 'hotstar_movies', name: 'Hotstar Movies' },
-    { type: 'movie', id: 'aha_movies', name: 'Aha Movies' },
-    { type: 'movie', id: 'sonyliv_movies', name: 'SonyLIV Movies' }
-  ]
-};
+const app  = express();
+const PORT = process.env.PORT || 3000;
 
-const builder = new addonBuilder(manifest);
+app.use(cors());
+app.use(express.json());
 
-builder.defineCatalogHandler(({ type, id }) => {
-  const provider = id.split('_')[0];
+const cache = new Map();
+function cacheGet(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > 30 * 60 * 1000) { cache.delete(key); return null; }
+  return entry.data;
+}
+function cacheSet(key, data) { cache.set(key, { data, ts: Date.now() }); }
 
-  const data = {
-    sunnxt: [
-      { name: 'Vikram', poster: 'https://image.tmdb.org/t/p/w500/mJMBFdyQrDvhHd8aGP8s0mW6Jq0.jpg' },
-      { name: 'Jailer', poster: 'https://image.tmdb.org/t/p/w500/8Z5QkNXYMd8JX85N7BQbMQa8F0B.jpg' },
-      { name: 'Leo', poster: 'https://image.tmdb.org/t/p/w500/jTiDY0tkMBkTHiJRXj9HaA8dBX1.jpg' }
-    ],
-    zee5: [
-      { name: 'Master', poster: 'https://image.tmdb.org/t/p/w500/2Sj0oM0cMVLVTFHhEeNfO7GXNV0.jpg' },
-      { name: 'Bigil', poster: 'https://image.tmdb.org/t/p/w500/5VEJlv5OQw5rlWbfUgNW9j18xwM.jpg' },
-      { name: 'Jai Bhim', poster: 'https://image.tmdb.org/t/p/w500/5fwoinMEBWVD7Hj9cKD4o0TkKHG.jpg' }
-    ],
-    hotstar: [
-      { name: 'Suzhal', poster: 'https://image.tmdb.org/t/p/w500/qCyFBa4XAj7ybVXjBuXoqKKkPDO.jpg' },
-      { name: 'Inspector Rishi', poster: 'https://image.tmdb.org/t/p/w500/4z6p0xC8B3l6vVQpSgV3GkD7RkY.jpg' },
-      { name: 'Modern Love Chennai', poster: 'https://image.tmdb.org/t/p/w500/7wZ8vT8LwM3K6UQ5R2G3m2Q7Z9x.jpg' }
-    ],
-    aha: [
-      { name: 'Vilangu', poster: 'https://image.tmdb.org/t/p/w500/9MN2Vt0K4lYl8c1f8Q3xV5z9lY1.jpg' },
-      { name: 'Pettaikaali', poster: 'https://image.tmdb.org/t/p/w500/uTQx4m4l5vN3mWQ2jQm0Tqj6M4M.jpg' },
-      { name: 'Vadhandhi', poster: 'https://image.tmdb.org/t/p/w500/mXkQVi9DLDl1RnfVlLBHMPGNBiH.jpg' }
-    ],
-    sonyliv: [
-      { name: 'Ponniyin Selvan', poster: 'https://image.tmdb.org/t/p/w500/hJ7w2Yn9Yh8n9HLMiZmjS66UWyj.jpg' },
-      { name: 'Viduthalai', poster: 'https://image.tmdb.org/t/p/w500/2eMGd1KFXHF0lGmyMfNHAe8Zyze.jpg' },
-      { name: 'Farhana', poster: 'https://image.tmdb.org/t/p/w500/6QZ3v7m4wK9M2v8xN1b2c3d4e5f.jpg' }
-    ]
-  };
+app.get("/", (req, res) => res.redirect("/manifest.json"));
 
-  const metas = (data[provider] || []).map((item, i) => ({
-    id: `${provider}_${type}_${i}`,
-    type,
-    name: item.name,
-    poster: item.poster
-  }));
-
-  return Promise.resolve({ metas });
+app.get("/manifest.json", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.json(manifest);
 });
 
-serveHTTP(builder.getInterface(), { port: process.env.PORT || 7000 });
+app.get("/catalog/:type/:id/:extra?.json", async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    const extraRaw = req.params.extra || "";
+    const extra = {};
+    if (extraRaw) {
+      extraRaw.split("&").forEach((part) => {
+        const [k, v] = part.split("=");
+        if (k && v) extra[decodeURIComponent(k)] = decodeURIComponent(v);
+      });
+    }
+    Object.assign(extra, req.query);
+    const cacheKey = `${type}:${id}:${JSON.stringify(extra)}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const catalogDef = manifest.catalogs.find((c) => c.id === id && c.type === type);
+    if (!catalogDef) return res.status(404).json({ error: "Catalog not found" });
+    const metas = await fetchCatalog(id, type, extra);
+    const response = { metas };
+    cacheSet(cacheKey, response);
+    res.setHeader("Content-Type", "application/json");
+    res.json(response);
+  } catch (err) {
+    console.error("Catalog error:", err.message);
+    res.status(500).json({ metas: [] });
+  }
+});
+
+app.get("/meta/:type/:id.json", async (req, res) => {
+  const { type, id } = req.params;
+  if (id.startsWith("tmdb:")) {
+    return res.json({ meta: { id, type, name: "Tamil Content" } });
+  }
+  res.json({ meta: {} });
+});
+
+app.get("/health", (req, res) => res.json({ status: "ok", version: manifest.version }));
+
+app.listen(PORT, () => {
+  console.log(`Tamil OTT Addon running on port ${PORT}`);
+});
