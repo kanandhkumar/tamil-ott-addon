@@ -10,7 +10,7 @@ const PORT       = process.env.PORT            || 10000;
 const manifest = {
   id: "com.kanandhkumar.tamilott",
   name: "Tamil OTT Catalog",
-  version: "2.0.0",
+  version: "2.1.0",
   description: "Tamil movies & series from Sun NXT, ZEE5, JioHotstar, Aha, MX Player, Sony LIV",
   logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Tamil_language_logo.svg/200px-Tamil_language_logo.svg.png",
   resources: ["catalog"],
@@ -18,79 +18,97 @@ const manifest = {
   idPrefixes: ["tt"],
   behaviorHints: { adult: false, p2p: false },
   catalogs: [
-    { id: "sunnxt_movies",       type: "movie",  name: "Sun NXT – Tamil Movies",        extra: [{ name: "skip", isRequired: false }] },
-    { id: "zee5_movies",         type: "movie",  name: "ZEE5 – Tamil Movies",            extra: [{ name: "skip", isRequired: false }] },
-    { id: "jiohotstar_movies",   type: "movie",  name: "JioHotstar – Tamil Movies",      extra: [{ name: "skip", isRequired: false }] },
-    { id: "aha_movies",          type: "movie",  name: "Aha Tamil – Movies",             extra: [{ name: "skip", isRequired: false }] },
-    { id: "mxplayer_movies",     type: "movie",  name: "Amazon MX Player – Tamil Movies",extra: [{ name: "skip", isRequired: false }] },
-    { id: "sonyliv_movies",      type: "movie",  name: "Sony LIV – Tamil Movies",        extra: [{ name: "skip", isRequired: false }] },
-    { id: "kalaignar_movies",    type: "movie",  name: "Kalaignar TV – Tamil Movies",    extra: [{ name: "skip", isRequired: false }] },
-    { id: "sunnxt_series",       type: "series", name: "Sun NXT – Tamil Series",         extra: [{ name: "skip", isRequired: false }] },
-    { id: "zee5_series",         type: "series", name: "ZEE5 – Tamil Series",            extra: [{ name: "skip", isRequired: false }] },
-    { id: "jiohotstar_series",   type: "series", name: "JioHotstar – Tamil Series",      extra: [{ name: "skip", isRequired: false }] },
-    { id: "aha_series",          type: "series", name: "Aha Tamil – Series",             extra: [{ name: "skip", isRequired: false }] },
-    { id: "sonyliv_series",      type: "series", name: "Sony LIV – Tamil Series",        extra: [{ name: "skip", isRequired: false }] },
+    { id: "sunnxt_movies",     type: "movie",  name: "Sun NXT – Tamil Movies",         extra: [{ name: "skip", isRequired: false }] },
+    { id: "zee5_movies",       type: "movie",  name: "ZEE5 – Tamil Movies",             extra: [{ name: "skip", isRequired: false }] },
+    { id: "jiohotstar_movies", type: "movie",  name: "JioHotstar – Tamil Movies",       extra: [{ name: "skip", isRequired: false }] },
+    { id: "aha_movies",        type: "movie",  name: "Aha Tamil – Movies",              extra: [{ name: "skip", isRequired: false }] },
+    { id: "mxplayer_movies",   type: "movie",  name: "Amazon MX Player – Tamil Movies", extra: [{ name: "skip", isRequired: false }] },
+    { id: "sonyliv_movies",    type: "movie",  name: "Sony LIV – Tamil Movies",         extra: [{ name: "skip", isRequired: false }] },
+    { id: "kalaignar_movies",  type: "movie",  name: "Kalaignar TV – Tamil Movies",     extra: [{ name: "skip", isRequired: false }] },
+    { id: "sunnxt_series",     type: "series", name: "Sun NXT – Tamil Series",          extra: [{ name: "skip", isRequired: false }] },
+    { id: "zee5_series",       type: "series", name: "ZEE5 – Tamil Series",             extra: [{ name: "skip", isRequired: false }] },
+    { id: "jiohotstar_series", type: "series", name: "JioHotstar – Tamil Series",       extra: [{ name: "skip", isRequired: false }] },
+    { id: "aha_series",        type: "series", name: "Aha Tamil – Series",              extra: [{ name: "skip", isRequired: false }] },
+    { id: "sonyliv_series",    type: "series", name: "Sony LIV – Tamil Series",         extra: [{ name: "skip", isRequired: false }] },
   ],
 };
 
-// ── Verified Tamil fallback IDs ────────────────────────────────────────────────
-const FALLBACK_MOVIES = [
-  "tt6016236","tt15655792","tt14539740","tt13121618","tt8143610",
-  "tt7144870","tt10399902","tt9019536","tt8367814","tt6712648",
-  "tt9764938","tt8108198","tt7504726","tt9032400","tt6719968",
-  "tt9032398","tt15671028","tt12412888","tt16365614","tt11035246",
-];
-const FALLBACK_SERIES = [
-  "tt8291224","tt14519434","tt9032401","tt12077116","tt15256628",
-  "tt14444952","tt11847842","tt10954984","tt13615776","tt8291220",
-];
-function rotateFallback(arr, platform) {
-  const n = {sunnxt:0,zee5:4,jiohotstar:8,aha:12,mxplayer:3,kalaignar:7,sonyliv:10}[platform]||0;
-  return [...arr.slice(n), ...arr.slice(0,n)];
-}
+// ── Verified Tamil IMDB IDs per platform (fallback) ───────────────────────────
+const PLATFORM_MOVIES = {
+  sunnxt:     ["tt6016236","tt8143610","tt7144870","tt6719968","tt9764938","tt10837246","tt9032398","tt12412888","tt15655792","tt14539740","tt11035246","tt9032400","tt8367814","tt6712648","tt15671028","tt13121618","tt16365614","tt7504726","tt8108198","tt9019536"],
+  zee5:       ["tt9019536","tt10399902","tt8367814","tt6712648","tt9764938","tt8108198","tt7504726","tt9032400","tt15671028","tt9032398","tt16365614","tt11035246","tt14539740","tt6016236","tt8143610","tt7144870","tt6719968","tt15655792","tt13121618","tt12412888"],
+  jiohotstar: ["tt13121618","tt15655792","tt14539740","tt6016236","tt8143610","tt9019536","tt10399902","tt12412888","tt9032398","tt15671028","tt7144870","tt6719968","tt8367814","tt6712648","tt9764938","tt9032400","tt8108198","tt7504726","tt16365614","tt11035246"],
+  aha:        ["tt9032398","tt15671028","tt9019536","tt10399902","tt8367814","tt6712648","tt9764938","tt8108198","tt7504726","tt9032400","tt6016236","tt8143610","tt7144870","tt6719968","tt13121618","tt15655792","tt14539740","tt12412888","tt16365614","tt11035246"],
+  mxplayer:   ["tt10399902","tt9019536","tt8367814","tt6712648","tt9764938","tt8108198","tt7504726","tt9032400","tt6016236","tt8143610","tt7144870","tt6719968","tt9032398","tt15671028","tt13121618","tt15655792","tt14539740","tt12412888","tt16365614","tt11035246"],
+  kalaignar:  ["tt6719968","tt7144870","tt8143610","tt6016236","tt9764938","tt10837246","tt8108198","tt7504726","tt9032400","tt6712648","tt8367814","tt9019536","tt10399902","tt15671028","tt9032398","tt13121618","tt15655792","tt14539740","tt12412888","tt16365614"],
+  sonyliv:    ["tt8367814","tt6712648","tt9764938","tt10399902","tt9019536","tt15671028","tt9032398","tt8108198","tt7504726","tt9032400","tt6016236","tt8143610","tt7144870","tt6719968","tt13121618","tt15655792","tt14539740","tt12412888","tt16365614","tt11035246"],
+};
 
-// ── TMDB metadata ─────────────────────────────────────────────────────────────
+const PLATFORM_SERIES = {
+  sunnxt:     ["tt8291224","tt14519434","tt9032401","tt12077116","tt15256628","tt14444952","tt11847842","tt10954984","tt13615776","tt8291220"],
+  zee5:       ["tt14519434","tt9032401","tt8291224","tt8291220","tt11847842","tt10954984","tt15256628","tt14444952","tt13615776","tt12077116"],
+  jiohotstar: ["tt8291224","tt14519434","tt12077116","tt9032401","tt15256628","tt14444952","tt13615776","tt11847842","tt10954984","tt8291220"],
+  aha:        ["tt15256628","tt14444952","tt13615776","tt11847842","tt10954984","tt8291224","tt14519434","tt12077116","tt9032401","tt8291220"],
+  mxplayer:   ["tt11847842","tt10954984","tt15256628","tt14444952","tt13615776","tt8291224","tt14519434","tt12077116","tt9032401","tt8291220"],
+  sonyliv:    ["tt9032401","tt8291220","tt8291224","tt14519434","tt12077116","tt10954984","tt11847842","tt15256628","tt14444952","tt13615776"],
+};
+
+// ── TMDB fetch with retry ─────────────────────────────────────────────────────
 const metaCache = new Map();
+
+async function tmdbFetch(url) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        timeout: 10000,
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; TamilOTT/2.0)" },
+      });
+      if (res.ok) return res.json();
+      console.log(`TMDB attempt ${attempt} failed: ${res.status}`);
+    } catch (e) {
+      console.log(`TMDB attempt ${attempt} error: ${e.message}`);
+    }
+    await new Promise(r => setTimeout(r, 1000 * attempt));
+  }
+  return null;
+}
 
 async function getMeta(imdbId, type) {
   if (metaCache.has(imdbId)) return metaCache.get(imdbId);
   if (!TMDB_KEY) return null;
 
-  try {
-    const mediaType = type === "movie" ? "movie" : "tv";
-    const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id&language=en-US`;
-    const res  = await fetch(url, { timeout: 8000 });
-    const data = await res.json();
-    const r    = data[`${mediaType}_results`]?.[0];
+  const mediaType = type === "movie" ? "movie" : "tv";
+  const data = await tmdbFetch(
+    `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id&language=en-US`
+  );
 
-    if (!r?.poster_path) { metaCache.set(imdbId, null); return null; }
+  if (!data) { metaCache.set(imdbId, null); return null; }
 
-    // Reject non-Tamil content
-    if (r.original_language && r.original_language !== "ta") {
-      console.log(`Rejected ${imdbId} (${r.title||r.name}) lang=${r.original_language}`);
-      metaCache.set(imdbId, null);
-      return null;
-    }
+  const r = data[`${mediaType}_results`]?.[0];
+  if (!r?.poster_path) { metaCache.set(imdbId, null); return null; }
 
-    const meta = {
-      id:          imdbId,
-      type,
-      name:        r.title || r.name || "Tamil Content",
-      poster:      `https://image.tmdb.org/t/p/w500${r.poster_path}`,
-      background:  r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
-      description: r.overview   || undefined,
-      releaseInfo: (r.release_date || r.first_air_date || "").slice(0,4) || undefined,
-      imdbRating:  r.vote_average ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
-    };
-    metaCache.set(imdbId, meta);
-    return meta;
-  } catch (e) {
-    console.error("getMeta error:", imdbId, e.message);
+  // Reject non-Tamil
+  if (r.original_language && r.original_language !== "ta") {
+    console.log(`Rejected ${imdbId}: lang=${r.original_language}`);
+    metaCache.set(imdbId, null);
     return null;
   }
+
+  const meta = {
+    id:          imdbId,
+    type,
+    name:        r.title || r.name || "Tamil Content",
+    poster:      `https://image.tmdb.org/t/p/w500${r.poster_path}`,
+    background:  r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
+    description: r.overview   || undefined,
+    releaseInfo: (r.release_date || r.first_air_date || "").slice(0,4) || undefined,
+    imdbRating:  r.vote_average ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
+  };
+  metaCache.set(imdbId, meta);
+  return meta;
 }
 
-// ── Gemini with Google Search ─────────────────────────────────────────────────
+// ── Gemini (no Google Search — basic prompt only) ─────────────────────────────
 const geminiCache = new Map();
 const GEMINI_TTL  = 12 * 60 * 60 * 1000;
 const PLATFORM_NAMES = {
@@ -109,12 +127,12 @@ async function askGemini(platform, subtype) {
   const year = new Date().getFullYear();
   const kind = subtype === "series" ? "Tamil web series and TV shows" : "Tamil movies";
 
+  // Simple prompt without Google Search (more reliable on free tier)
   const prompt =
-    `Search the web and list 15 ${kind} from ${year-1} or ${year} ` +
-    `available on ${name} India. ` +
-    `Return ONLY a JSON array of IMDB IDs (format ttXXXXXXX). ` +
-    `Only include original Tamil language content, not dubbed. ` +
-    `Example: ["tt6016236","tt15655792"]`;
+    `List 15 ${kind} available on ${name} India in ${year-1} or ${year}. ` +
+    `Only original Tamil language content, not dubbed. ` +
+    `Return ONLY a JSON array of IMDB IDs like: ["tt6016236","tt15655792"]. ` +
+    `No explanation, just the array.`;
 
   try {
     const res = await fetch(
@@ -125,9 +143,8 @@ async function askGemini(platform, subtype) {
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.1, maxOutputTokens: 400 },
-          tools: [{ googleSearch: {} }],
         }),
-        timeout: 20000,
+        timeout: 15000,
       }
     );
     if (!res.ok) { console.error("Gemini HTTP", res.status); return null; }
@@ -137,7 +154,7 @@ async function askGemini(platform, subtype) {
     if (!match) return null;
     const ids = JSON.parse(match[0]).filter(id => /^tt\d{7,8}$/.test(id));
     if (ids.length < 3) return null;
-    console.log(`Gemini ${key}: ${ids.join(",")}`);
+    console.log(`Gemini ${key}: ${ids.slice(0,5).join(",")}`);
     geminiCache.set(key, { data: ids, ts: Date.now() });
     return ids;
   } catch (e) {
@@ -146,7 +163,7 @@ async function askGemini(platform, subtype) {
   }
 }
 
-// ── CORS middleware ───────────────────────────────────────────────────────────
+// ── CORS ──────────────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
@@ -155,7 +172,6 @@ app.use((req, res, next) => {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.get("/", (req, res) => res.redirect("/manifest.json"));
-
 app.get("/manifest.json", (req, res) => res.json(manifest));
 
 app.get("/catalog/:type/:id.json", async (req, res) => {
@@ -163,16 +179,14 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
     const { type, id } = req.params;
     const platform = id.split("_")[0];
     const subtype  = id.includes("series") ? "series" : "movies";
+    const isMovie  = subtype === "movies";
 
-    // Try Gemini first
+    // Try Gemini first, fall back to curated list
     let ids = await askGemini(platform, subtype);
-
-    // Fallback
     if (!ids || ids.length < 3) {
-      ids = rotateFallback(
-        subtype === "series" ? FALLBACK_SERIES : FALLBACK_MOVIES,
-        platform
-      );
+      ids = isMovie
+        ? (PLATFORM_MOVIES[platform] || PLATFORM_MOVIES.sunnxt)
+        : (PLATFORM_SERIES[platform] || PLATFORM_SERIES.sunnxt);
     }
 
     // Fetch metadata in batches of 5
@@ -182,16 +196,6 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
       results.push(...batch.filter(Boolean));
     }
 
-    // If still empty, use fallback directly
-    if (results.length === 0) {
-      const fb = rotateFallback(
-        subtype === "series" ? FALLBACK_SERIES : FALLBACK_MOVIES,
-        platform
-      );
-      const fbResults = await Promise.all(fb.slice(0,10).map(id => getMeta(id, type)));
-      return res.json({ metas: fbResults.filter(Boolean) });
-    }
-
     res.json({ metas: results });
   } catch (err) {
     console.error("Catalog error:", err.message);
@@ -199,32 +203,29 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
   }
 });
 
-app.get("/health", (req, res) => res.json({ status: "ok", version: manifest.version }));
-
-app.listen(PORT, () => console.log(`Tamil OTT Addon live on port ${PORT}`));
-
-// ── Debug endpoint ────────────────────────────────────────────────────────────
+// Debug
 app.get("/debug/:platform/:subtype", async (req, res) => {
   const { platform, subtype } = req.params;
-  const result = { platform, subtype, tmdb_key: !!TMDB_KEY, gemini_key: !!GEMINI_KEY };
+  const result = {
+    platform, subtype,
+    tmdb_key: !!TMDB_KEY,
+    gemini_key: !!GEMINI_KEY,
+  };
 
-  // Test Gemini
   try {
     const ids = await askGemini(platform, subtype);
-    result.gemini_ids = ids;
+    result.gemini_ids   = ids;
     result.gemini_count = ids ? ids.length : 0;
-  } catch (e) {
-    result.gemini_error = e.message;
-  }
+  } catch (e) { result.gemini_error = e.message; }
 
-  // Test TMDB with one known Tamil ID
   try {
-    const testId = "tt6016236"; // Vikram
-    const meta = await getMeta(testId, "movie");
-    result.tmdb_test = meta ? `OK - ${meta.name}` : "FAILED - no result";
-  } catch (e) {
-    result.tmdb_error = e.message;
-  }
+    const meta = await getMeta("tt6016236", "movie");
+    result.tmdb_test = meta ? `OK - ${meta.name} - ${meta.poster}` : "FAILED";
+  } catch (e) { result.tmdb_error = e.message; }
 
   res.json(result);
 });
+
+app.get("/health", (req, res) => res.json({ status: "ok", version: manifest.version }));
+
+app.listen(PORT, () => console.log(`Tamil OTT Addon live on port ${PORT}`));
