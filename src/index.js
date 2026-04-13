@@ -1,41 +1,47 @@
-const { addonBuilder } = require('stremio-addon-sdk');
+const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
 
-const builder = new addonBuilder({
+const manifest = {
   id: 'com.kanand.tamilott',
-  name: 'Tamil OTT',
   version: '1.0.0',
+  name: 'Tamil OTT',
+  description: 'Tamil OTT catalogs for Stremio',
   resources: ['catalog'],
-  types: ['movie', 'series']
-});
+  types: ['movie', 'series'],
+  catalogs: [
+    { type: 'movie', id: 'sunnxt_movies', name: 'SunNXT Movies' },
+    { type: 'movie', id: 'zee5_movies', name: 'ZEE5 Movies' },
+    { type: 'movie', id: 'hotstar_movies', name: 'Hotstar Movies' },
+    { type: 'movie', id: 'aha_movies', name: 'Aha Movies' },
+    { type: 'movie', id: 'sonyliv_movies', name: 'SonyLIV Movies' },
+    { type: 'series', id: 'sunnxt_series', name: 'SunNXT Series' },
+    { type: 'series', id: 'zee5_series', name: 'ZEE5 Series' },
+    { type: 'series', id: 'hotstar_series', name: 'Hotstar Series' },
+    { type: 'series', id: 'aha_series', name: 'Aha Series' },
+    { type: 'series', id: 'sonyliv_series', name: 'SonyLIV Series' }
+  ]
+};
 
-builder.defineCatalogHandler(async (args) => {
-  const provider = args.id.split('_')[0];
-  const configs = {
-    sunnxt: { title: 'SunNXT - New Tamil Movies', content: ['Vikram', 'Jailer', 'Leo'] },
-    zee5: { title: 'ZEE5 - Tamil Hits', content: ['Master', 'Bigil', 'Jai Bhim'] },
-    hotstar: { title: 'Hotstar - Tamil Series', content: ['Suzhal', 'Inspector Rishi'] },
-    aha: { title: 'Aha - Tamil Web Series', content: ['Modern Love Chennai', 'Vilangu'] },
-    sonyliv: { title: 'SonyLIV - Tamil Movies', content: ['Ponniyin Selvan', 'Viduthalai'] }
+const builder = new addonBuilder(manifest);
+
+builder.defineCatalogHandler(({ type, id }) => {
+  const provider = id.split('_')[0];
+
+  const data = {
+    sunnxt: ['Vikram', 'Jailer', 'Leo'],
+    zee5: ['Master', 'Bigil', 'Jai Bhim'],
+    hotstar: ['Suzhal', 'Inspector Rishi', 'Modern Love Chennai'],
+    aha: ['Vilangu', 'Pettaikaali', 'Vadhandhi'],
+    sonyliv: ['Ponniyin Selvan', 'Viduthalai', 'Farhana']
   };
-  
-  const config = configs[provider] || { title: 'Tamil Movies', content: ['Test'] };
-  
-  const metas = config.content.slice(0, 20).map((name, i) => ({
-    id: `${provider}_${i}`,
-    type: args.type,
+
+  const metas = (data[provider] || ['Tamil Title']).map((name, i) => ({
+    id: `${provider}_${type}_${i}`,
+    type,
     name,
-    poster: `https://via.placeholder.com/300x450/FF6B6B/FFFFFF?text=${encodeURIComponent(name)}`
+    poster: `https://via.placeholder.com/300x450?text=${encodeURIComponent(name)}`
   }));
-  
-  return { meta: metas };
+
+  return Promise.resolve({ metas });
 });
 
-builder.defineCatalogs(() => [
-  { type: 'movie', id: 'sunnxt_movies', name: 'SunNXT Movies' },
-  { type: 'movie', id: 'zee5_movies', name: 'ZEE5 Movies' },
-  { type: 'movie', id: 'hotstar_movies', name: 'Hotstar Movies' },
-  { type: 'movie', id: 'aha_movies', name: 'Aha Movies' },
-  { type: 'movie', id: 'sonyliv_movies', name: 'SonyLIV Movies' }
-]);
-
-module.exports = builder.getInterface();
+serveHTTP(builder.getInterface(), { port: process.env.PORT || 7000 });
