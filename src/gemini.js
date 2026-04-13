@@ -1,30 +1,23 @@
 const fetch = require("node-fetch");
 
-// This is safe. It pulls from Render's secret environment.
 const GEMINI_KEY = process.env.GEMINI_API_KEY; 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
-const geminiCache = new Map();
-const CACHE_TTL = 12 * 60 * 60 * 1000;
+const PLATFORMS = ["Netflix", "Amazon Prime Video", "Sun NXT", "Aha Tamil", "ZEE5"];
 
-const PLATFORM_NAMES = {
-  sunnxt: "Sun NXT", zee5: "ZEE5", jiohotstar: "JioHotstar", 
-  aha: "Aha Tamil", sonyliv: "Sony LIV", netflix: "Netflix", prime: "Amazon Prime Video"
-};
+async function askGemini(platformRequested, subtype) {
+  if (!GEMINI_KEY) return null;
 
-async function askGemini(platform, subtype) {
-  if (!GEMINI_KEY) return null; // Safety check
+  // We are starting with 4 major recent Tamil hits to test the allocation logic
+  const testMovies = ["Maharaja (2024)", "Raayan (2024)", "Thiruchitrambalam", "Kottai Pattinam"];
 
-  const cacheKey = `${platform}_${subtype}`;
-  const cached = geminiCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
-
-  const platformName = PLATFORM_NAMES[platform] || platform;
-  const year = new Date().getFullYear();
-
-  const prompt = `Return a JSON array of IMDB IDs (ttXXXXXXX) for Tamil language ${subtype} currently available on ${platformName} India released in ${year} or ${year-1}. 
-  IMPORTANT: Only return original Tamil movies/shows. No dubbed content. 
-  Example format: ["tt30141680", "tt17057710"]`;
+  const prompt = `Act as a streaming database. For these 4 Tamil movies: ${testMovies.join(", ")}, 
+  identify which ONE of these platforms they are currently streaming on in India: ${PLATFORMS.join(", ")}.
+  
+  Return ONLY a JSON object where the keys are the platform names (lowercase, e.g., "aha") and the values are arrays of their IMDB IDs.
+  Example: {"aha": ["tt1234567"], "netflix": ["tt7654321"]}
+  
+  Only include movies that belong to the platform: "${platformRequested}".`;
 
   try {
     const res = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
@@ -32,19 +25,22 @@ async function askGemini(platform, subtype) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ googleSearch: {} }]
+        tools: [{ googleSearch: {} }] // Uses Google Search to verify the current OTT home
       })
     });
 
     const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const match = text.match(/\[[\s\S]*?\]/);
+    const match = text.match(/\{[\s\S]*?\}/);
     if (!match) return null;
 
-    const ids = JSON.parse(match[0]).filter(id => /^tt\d+/.test(id));
-    geminiCache.set(cacheKey, { data: ids, ts: Date.now() });
-    return ids;
-  } catch (e) { return null; }
+    const allocation = JSON.parse(match[0]);
+    // Return only the IDs for the platform Stremio is currently asking for
+    const platformKey = platformRequested.toLowerCase().split(" ")[0];
+    return allocation[platformKey] || allocation[platformRequested] || [];
+  } catch (e) {
+    return null;
+  }
 }
 
 module.exports = { askGemini };
