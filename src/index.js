@@ -10,9 +10,8 @@ app.get("/manifest.json", (req, res) => res.json(manifest));
 
 app.get("/catalog/:type/:id.json", async (req, res) => {
   const { type, id } = req.params;
-  const extra = { skip: req.query.skip || 0 };
   try {
-    const metas = await fetchCatalog(id, type, extra);
+    const metas = await fetchCatalog(id, type, { skip: req.query.skip || 0 });
     res.json({ metas });
   } catch (err) {
     res.json({ metas: [] });
@@ -20,4 +19,4 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
 });
 
 const port = process.env.PORT || 10000;
-app.listen(port, () => console.log(`Active on port ${port}`));
+app.listen(port, () => console.log(`Server running on port ${port}`));
