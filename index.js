@@ -202,3 +202,29 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
 app.get("/health", (req, res) => res.json({ status: "ok", version: manifest.version }));
 
 app.listen(PORT, () => console.log(`Tamil OTT Addon live on port ${PORT}`));
+
+// ── Debug endpoint ────────────────────────────────────────────────────────────
+app.get("/debug/:platform/:subtype", async (req, res) => {
+  const { platform, subtype } = req.params;
+  const result = { platform, subtype, tmdb_key: !!TMDB_KEY, gemini_key: !!GEMINI_KEY };
+
+  // Test Gemini
+  try {
+    const ids = await askGemini(platform, subtype);
+    result.gemini_ids = ids;
+    result.gemini_count = ids ? ids.length : 0;
+  } catch (e) {
+    result.gemini_error = e.message;
+  }
+
+  // Test TMDB with one known Tamil ID
+  try {
+    const testId = "tt6016236"; // Vikram
+    const meta = await getMeta(testId, "movie");
+    result.tmdb_test = meta ? `OK - ${meta.name}` : "FAILED - no result";
+  } catch (e) {
+    result.tmdb_error = e.message;
+  }
+
+  res.json(result);
+});
