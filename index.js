@@ -5,7 +5,7 @@ const app = express();
 const manifest = {
   id: "com.kanandhkumar.tamilott",
   name: "Tamil OTT Catalog",
-  version: "1.9.0",
+  version: "1.9.5",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
@@ -17,39 +17,50 @@ const manifest = {
   idPrefixes: ["tt"]
 };
 
-// IMPROVED: This function now waits properly for the data
+// IMPROVED: Fetches full metadata and forces a poster URL
 async function getMeta(imdbId, type) {
   try {
-    const response = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`);
-    const data = await response.json();
+    const response = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
     
-    if (data && data.meta) {
+    const data = await response.json();
+    const meta = data.meta;
+
+    if (meta) {
       return {
         id: imdbId,
         type: type,
-        name: data.meta.name || "Tamil Movie",
-        poster: data.meta.poster || "",
-        background: data.meta.background || "",
-        description: data.meta.description || ""
+        name: meta.name || "Tamil Movie",
+        // Logic: Use Cinemeta poster, OR fallback to Metahub, OR use a placeholder
+        poster: meta.poster || `https://images.metahub.space/poster/medium/${imdbId}/img` || "https://via.placeholder.com/500x750?text=No+Poster",
+        background: meta.background || "",
+        description: meta.description || "Tamil movie content."
       };
     }
     return null;
   } catch (e) {
-    console.error("Meta fetch failed for:", imdbId);
+    console.error("Fetch failed for:", imdbId);
     return null;
   }
 }
 
 app.get("/manifest.json", (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'application/json');
   res.json(manifest);
 });
 
 app.get("/catalog/:type/:id.json", async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'application/json');
+
   const type = req.params.type;
   const platform = req.params.id.split("_")[0].toLowerCase();
   
+  // Static list to ensure the rows are never empty
   const FALLBACK = {
     netflix: ["tt30141680"], // Maharaja
     prime: ["tt31281232"],   // Raayan
@@ -59,12 +70,11 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
 
   const ids = FALLBACK[platform] || ["tt30141680"];
   
-  // CRITICAL FIX: We use Promise.all to make sure we wait for ALL data
+  // Fetch all metadata in parallel
   const metas = await Promise.all(
     ids.map(id => getMeta(id, type))
   );
 
-  // Filter out any nulls and send the full objects
   res.json({ metas: metas.filter(m => m !== null) });
 });
 
