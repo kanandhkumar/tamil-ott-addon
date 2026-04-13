@@ -229,3 +229,41 @@ app.get("/debug/:platform/:subtype", async (req, res) => {
 app.get("/health", (req, res) => res.json({ status: "ok", version: manifest.version }));
 
 app.listen(PORT, () => console.log(`Tamil OTT Addon live on port ${PORT}`));
+
+// ── Network test endpoint ─────────────────────────────────────────────────────
+app.get("/nettest", async (req, res) => {
+  const tests = {};
+
+  // Test 1: TMDB
+  try {
+    const r = await fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}&page=1`, { timeout: 10000 });
+    tests.tmdb = r.ok ? `OK ${r.status}` : `FAIL ${r.status}`;
+  } catch (e) { tests.tmdb = `ERROR: ${e.message}`; }
+
+  // Test 2: TMDB find
+  try {
+    const r = await fetch(`https://api.themoviedb.org/3/find/tt6016236?api_key=${TMDB_KEY}&external_source=imdb_id`, { timeout: 10000 });
+    const d = await r.json();
+    tests.tmdb_find = d.movie_results?.length > 0 ? `OK - ${d.movie_results[0].title}` : `Empty: ${JSON.stringify(d).slice(0,100)}`;
+  } catch (e) { tests.tmdb_find = `ERROR: ${e.message}`; }
+
+  // Test 3: Google
+  try {
+    const r = await fetch("https://www.google.com", { timeout: 5000 });
+    tests.google = `OK ${r.status}`;
+  } catch (e) { tests.google = `ERROR: ${e.message}`; }
+
+  // Test 4: Gemini direct
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: "Say hello" }] }] }),
+      timeout: 10000,
+    });
+    const d = await r.json();
+    tests.gemini = r.ok ? `OK - ${d?.candidates?.[0]?.content?.parts?.[0]?.text?.slice(0,30)}` : `FAIL ${r.status}: ${JSON.stringify(d).slice(0,100)}`;
+  } catch (e) { tests.gemini = `ERROR: ${e.message}`; }
+
+  res.json(tests);
+});
