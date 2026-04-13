@@ -20,22 +20,23 @@ const manifest = {
   idPrefixes: ["tt"]
 };
 
-// Watchmode source IDs (you'll need to verify these in their /sources endpoint)
+// Replace these with real Watchmode source IDs from /sources endpoint
 const SOURCE_IDS = {
-  zee5: "zee5",        // Replace with actual Watchmode source ID
-  sunnxt: "sunnxt",    // Replace with actual Watchmode source ID  
-  sonyliv: "sonyliv",  // Replace with actual Watchmode source ID
-  aha: "aha"           // Replace with actual Watchmode source ID
+  zee5: "zee5",      // Get exact ID from https://api.watchmode.com/v1/sources/?apiKey=YOUR_KEY&regions=IN
+  sunnxt: "sunnxt",  // 
+  sonyliv: "sonyliv",// 
+  aha: "aha"         // 
 };
 
-async function getWatchmodeCatalog(sourceId, type, limit = 20) {
-  if (!WATCHMODE_KEY) return [];
+async function getWatchmodeTitles(sourceId, type, limit = 20) {
+  if (!WATCHMODE_KEY) {
+    return [];
+  }
 
   try {
     const url = `https://api.watchmode.com/v1/list-titles/?apiKey=${WATCHMODE_KEY}&source_ids=${sourceId}&source_country=IN&types=${type}&limit=${limit}`;
     const res = await fetch(url);
     const data = await res.json();
-
     return data.titles || [];
   } catch {
     return [];
@@ -43,7 +44,7 @@ async function getWatchmodeCatalog(sourceId, type, limit = 20) {
 }
 
 async function getTMDBMeta(imdbId, type) {
-  if (!TMDB_KEY || !imdbId.startsWith('tt')) return null;
+  if (!TMDB_KEY || !imdbId || !imdbId.startsWith('tt')) return null;
 
   try {
     const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id`;
@@ -56,10 +57,10 @@ async function getTMDBMeta(imdbId, type) {
     return {
       id: imdbId,
       type,
-      name: result.title || result.name,
+      name: result.title || result.name || "",
       poster: result.poster_path ? `https://image.tmdb.org/t/p/w500${result.poster_path}` : undefined,
       background: result.backdrop_path ? `https://image.tmdb.org/t/p/w1280${result.backdrop_path}` : undefined,
-      description: result.overview
+      description: result.overview || ""
     };
   } catch {
     return null;
@@ -73,22 +74,33 @@ app.get("/manifest.json", (req, res) => {
 
 app.get("/catalog/:type/:id.json", async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  
   const type = req.params.type;
-  const sourceId = SOURCE_IDS[req.params.id];
+  const catalogId = req.params.id;
+  const sourceId = SOURCE_IDS[catalogId];
 
   if (!sourceId) {
     return res.json({ metas: [] });
   }
 
-  const titles = await getWatchmodeCatalog(sourceId, type);
+  const titles = await getWatchmodeTitles(sourceId, type);
   const metas = await Promise.all(
     titles.slice(0, 20).map(title => getTMDBMeta(title.imdb_id, type))
   );
 
-  res.json({ metas: metas.filter(Boolean) });
+  res.json({ metas: metas.filter(m => m && m.name) });
 });
 
-app.get("/", (req, res) => res.send("Tamil OTT with Watchmode + TMDb"));
+app.get("/", (req, res) => {
+  res.send(`
+    Tamil OTT Addon<br>
+    /manifest.json - Stremio manifest<br>
+    /catalog/movie/zee5.json - ZEE5 movies<br>
+    Watchmode + TMDb powered
+  `);
+});
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT);
+app.listen(PORT, () => {
+  console.log(`Tamil OTT addon running on port ${PORT}`);
+});
