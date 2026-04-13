@@ -17,6 +17,9 @@ const PLATFORM_DATA = {
 };
 
 async function getMetaByImdb(imdbId, type) {
+  if (!TMDB_KEY) {
+     return { id: imdbId, type, name: "Missing API Key", poster: "https://via.placeholder.com/500x750?text=API+Key+Error" };
+  }
   try {
     const url = `${TMDB_BASE}/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id&language=en-US`;
     const res = await fetch(url);
