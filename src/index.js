@@ -2,14 +2,14 @@ const express = require("express");
 const fetch = require("node-fetch");
 const app = express();
 
-const TMDB_KEY = process.env.TMDB_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
 const manifest = {
   id: "com.kanandhkumar.tamilott",
   name: "Tamil OTT Catalog",
-  version: "1.4.5",
+  version: "1.5.0",
   resources: ["catalog"],
-  types: ["movie"],
+  types: ["movie", "series"],
   catalogs: [
     { id: "netflix_tamil", type: "movie", name: "Netflix - Tamil" },
     { id: "prime_tamil", type: "movie", name: "Prime - Tamil" },
@@ -19,59 +19,68 @@ const manifest = {
   idPrefixes: ["tt"]
 };
 
-// Simplified TMDB Fetcher
-async function getMeta(imdbId) {
+// 1. Gemini Search (To find what's trending)
+async function askGemini(platform, type) {
+  if (!GEMINI_KEY) return null;
   try {
-    const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id&language=ta-IN`;
-    const res = await fetch(url);
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `Return a JSON array of IMDB IDs for popular Tamil ${type} on ${platform} India. Just the IDs, e.g. ["tt30141680"]` }] }]
+      })
+    });
     const data = await res.json();
-    const r = data.movie_results?.[0];
-    if (!r) return null;
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const match = text.match(/\[[\s\S]*?\]/);
+    return match ? JSON.parse(match[0]) : null;
+  } catch (e) { return null; }
+}
+
+// 2. Cinemeta Fetcher (NO API KEY NEEDED)
+async function getMeta(imdbId, type) {
+  try {
+    const res = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`);
+    const data = await res.json();
+    if (!data.meta) return null;
+
     return {
       id: imdbId,
-      type: "movie",
-      name: r.title,
-      poster: `https://image.tmdb.org/t/p/w500${r.poster_path}`,
-      description: r.overview
+      type: type,
+      name: data.meta.name,
+      poster: data.meta.poster,
+      background: data.meta.background,
+      description: data.meta.description,
+      releaseInfo: data.meta.year || data.meta.releaseInfo
     };
   } catch (e) { return null; }
 }
 
+// 3. Routes
 app.get("/manifest.json", (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.json(manifest);
 });
 
-app.get("/catalog/movie/:id.json", async (req, res) => {
+app.get("/catalog/:type/:id.json", async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  
-  // Clean the ID (e.g., netflix_tamil becomes netflix)
+  const type = req.params.type;
   const platform = req.params.id.split("_")[0].toLowerCase();
   
   const FALLBACK = {
-    netflix: ["tt30141680"], // Maharaja
-    prime: ["tt31281232"],   // Raayan
-    sunnxt: ["tt17057710"],  // Thiruchitrambalam
-    aha: ["tt13647612"]      // Chitha
+    netflix: ["tt30141680"], 
+    prime: ["tt31281232"],   
+    sunnxt: ["tt17057710"],  
+    aha: ["tt13647612"]      
   };
 
-  // Get IDs for this platform, or default to Maharaja if platform not found
-  const ids = FALLBACK[platform] || ["tt30141680"];
-  
-  const metas = await Promise.all(ids.map(id => getMeta(id)));
-  const cleanMetas = metas.filter(Boolean);
+  let ids = await askGemini(platform, type);
+  if (!ids || ids.length === 0) ids = FALLBACK[platform] || ["tt30141680"];
 
-  // ULTIMATE FIX: If TMDB fails, send the data manually so the row isn't empty
-  if (cleanMetas.length === 0) {
-    return res.json({ metas: [{
-      id: "tt30141680",
-      type: "movie",
-      name: "Maharaja (Loading Error)",
-      poster: "https://image.tmdb.org/t/p/w500/94Y9U6_test_poster.jpg"
-    }]});
-  }
-
-  res.json({ metas: cleanMetas });
+  const metas = await Promise.all(ids.map(id => getMeta(id, type)));
+  res.json({ metas: metas.filter(Boolean) });
 });
 
-app.listen(process.env.PORT || 10000);
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server live on ${PORT}`));
