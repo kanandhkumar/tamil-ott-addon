@@ -2,7 +2,7 @@ const manifest = {
   id: "com.kanandhkumar.tamilott",
   name: "Tamil OTT Catalog",
   version: "1.4.0",
-  description: "Tamil Movies and Series by Platform (AI Powered)",
+  description: "Tamil Movies and Series (AI Powered)",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
