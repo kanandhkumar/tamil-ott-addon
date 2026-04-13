@@ -1,17 +1,20 @@
 {
-  "name": "tamil-ott-stremio-addon",
-  "version": "1.1.0",
-  "description": "Stremio/Nuvio addon for Tamil OTT platforms",
-  "main": "src/index.js",
+  "name": "tamil-ott-stremio",
+  "version": "1.0.0",
+  "description": "Tamil OTT Catalogs - SunNXT, ZEE5, Hotstar, Aha, SonyLIV",
+  "main": "index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node index.js",
+    "dev": "node index.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "node-fetch": "^2.7.0",
-    "cors": "^2.8.5"
+    "@stremiocloud/addon-sdk": "^1.1.0",
+    "node-fetch": "^3.3.2",
+    "express": "^4.19.2"
   },
   "engines": {
-    "node": ">=16"
-  }
+    "node": ">=18.0.0"
+  },
+  "author": "kanand",
+  "license": "MIT"
 }
