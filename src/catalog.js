@@ -1,12 +1,11 @@
 const fetch = require("node-fetch");
 const { askGemini } = require("./gemini");
 
+const TMDB_KEY = process.env.TMDB_API_KEY;
 const TMDB_BASE = "https://api.themoviedb.org/3";
-const TMDB_IMG  = "https://image.tmdb.org/t/p/w500";
-const TMDB_KEY  = process.env.TMDB_API_KEY;
 
-// TEST DATA: Ensuring these 4 major hits always show up in their rows
-const MANUAL_MAP = {
+// THE GUARANTEED LIST - These will show up if Gemini fails
+const FALLBACK = {
   netflix: ["tt30141680"], // Maharaja
   prime: ["tt31281232"],   // Raayan
   sunnxt: ["tt17057710"],  // Thiruchitrambalam
@@ -19,18 +18,15 @@ async function getMeta(imdbId, type) {
     const url = `${TMDB_BASE}/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id&language=ta-IN`;
     const res = await fetch(url);
     const data = await res.json();
-    const r = type === "movie" ? data.movie_results?.[0] : data.tv_results?.[0];
+    const r = (type === "movie" ? data.movie_results : data.tv_results)?.[0];
 
-    if (!r || !r.poster_path) return null;
-
+    if (!r) return null;
     return {
       id: imdbId,
       type: type,
       name: r.title || r.name,
-      poster: `${TMDB_IMG}${r.poster_path}`,
-      background: `https://image.tmdb.org/t/p/w1280${r.backdrop_path}`,
-      description: r.overview || "Tamil Content",
-      releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4)
+      poster: `https://image.tmdb.org/t/p/w500${r.poster_path}`,
+      description: r.overview
     };
   } catch (e) { return null; }
 }
@@ -38,18 +34,12 @@ async function getMeta(imdbId, type) {
 async function fetchCatalog(catalogId, type) {
   const platform = catalogId.split("_")[0].toLowerCase();
   
-  // 1. Try Gemini Search
+  // Try Gemini first, if it fails, use the FALLBACK list
   let ids = await askGemini(platform, type);
-  
-  // 2. Merge with Manual Map to ensure rows aren't empty
-  const fixedIds = MANUAL_MAP[platform] || [];
-  ids = Array.from(new Set([...(ids || []), ...fixedIds]));
-
-  // 3. Last Resort Fallback (Maharaja and Raayan)
-  if (ids.length === 0) ids = ["tt30141680", "tt31281232"];
+  if (!ids || ids.length === 0) ids = FALLBACK[platform] || ["tt30141680"];
 
   const results = await Promise.all(ids.map(id => getMeta(id, type)));
-  return results.filter(Boolean);
+  return results.filter(Boolean); // Only keep items that actually have data
 }
 
 module.exports = { fetchCatalog };
