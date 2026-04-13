@@ -2,14 +2,13 @@ const express = require("express");
 const fetch = require("node-fetch");
 const app = express();
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const TMDB_KEY = process.env.TMDB_API_KEY;
 const WATCHMODE_KEY = process.env.WATCHMODE_KEY;
 
 const manifest = {
   id: "com.kanandhkumar.tamilott",
-  name: "Tamil OTT Catalog (Pro)",
-  version: "4.1.0",
+  name: "Tamil OTT Catalog (TMDB Engine)",
+  version: "4.2.0",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
@@ -23,86 +22,69 @@ const manifest = {
   idPrefixes: ["tt"]
 };
 
-// 1. Watchmode: Fetching Real Data with your IDs
-async function getLiveIDs(platform, type) {
+// 1. Watchmode: Gets the "What's on" list using your provided IDs
+async function getWatchmodeIDs(platform, type) {
   if (!WATCHMODE_KEY) return null;
-  
-  // Mapping your provided IDs
   const sourceMap = { 
-    netflix: 203, 
-    prime: 26, 
-    sunnxt: 433, 
-    zee5: 450, 
-    sonyliv: 459, 
-    jiohotstar: 447 
+    netflix: 203, prime: 26, sunnxt: 433, zee5: 450, sonyliv: 459, jiohotstar: 447 
   };
-  
   const sourceId = sourceMap[platform];
   if (!sourceId) return null;
 
   try {
-    // We add 'search_field=name&search_value=Tamil' as a hint if the API supports it, 
-    // but filtering by source + region IN is usually enough for these platforms.
     const url = `https://api.watchmode.com/v1/list-titles/?apiKey=${WATCHMODE_KEY}&source_ids=${sourceId}&types=${type}&regions=IN`;
     const res = await fetch(url);
     const data = await res.json();
-    
-    return data.titles ? data.titles.slice(0, 10).map(t => t.imdb_id).filter(id => id) : null;
+    // Return IDs to be processed by TMDB
+    return data.titles ? data.titles.slice(0, 12).map(t => t.imdb_id).filter(id => id) : null;
   } catch (e) {
-    console.error("Watchmode Error:", e);
     return null;
   }
 }
 
-// 2. Gemini 3: Smart Backup (Optional/Fallback)
-async function askGemini(platform, type) {
-  if (!GEMINI_KEY) return null;
+// 2. TMDB Discovery: The "New" Backup 
+// If Watchmode fails, we use TMDB's built-in discovery to find Tamil content
+async function discoverTMDB(type) {
+  if (!TMDB_KEY) return [];
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_KEY}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `List 5 IMDb IDs for Tamil ${type}s on ${platform} India. JSON array only.` }] }],
-        generationConfig: { response_mime_type: "application/json" }
-      })
-    });
+    const tmdbType = type === "movie" ? "movie" : "tv";
+    // This finds popular Tamil language content released in India
+    const url = `https://api.themoviedb.org/3/discover/${tmdbType}?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&sort_by=popularity.desc`;
+    const res = await fetch(url);
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-    return JSON.parse(text);
-  } catch (e) { return null; }
+    
+    // Convert TMDB results to a format Stremio likes
+    return data.results.map(item => ({
+      id: item.id, // We'll handle the ID mapping in the route
+      name: item.title || item.name,
+      poster: `https://image.tmdb.org/t/p/w500${item.poster_path}`,
+      description: item.overview,
+      type: type
+    }));
+  } catch (e) {
+    return [];
+  }
 }
 
-// 3. Metadata Engine (TMDB with Cinemeta Fallback)
+// 3. Metadata Fetcher
 async function getMeta(imdbId, type) {
   try {
-    if (TMDB_KEY) {
-      const tmdbUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id`;
-      const tmdbRes = await fetch(tmdbUrl);
-      const tmdbData = await tmdbRes.json();
-      const result = type === "movie" ? tmdbData.movie_results?.[0] : tmdbData.tv_results?.[0];
+    const tmdbUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id`;
+    const res = await fetch(tmdbUrl);
+    const data = await res.json();
+    const result = type === "movie" ? data.movie_results?.[0] : data.tv_results?.[0];
 
-      if (result && result.poster_path) {
-        return {
-          id: imdbId,
-          type: type,
-          name: result.title || result.name,
-          poster: `https://image.tmdb.org/t/p/w500${result.poster_path}`,
-          background: `https://image.tmdb.org/t/p/original${result.backdrop_path}`,
-          description: result.overview
-        };
-      }
+    if (result) {
+      return {
+        id: imdbId,
+        type: type,
+        name: result.title || result.name,
+        poster: `https://image.tmdb.org/t/p/w500${result.poster_path}`,
+        background: `https://image.tmdb.org/t/p/original${result.backdrop_path}`,
+        description: result.overview
+      };
     }
-    // Final check for posters via Cinemeta
-    const cinemetaRes = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${imdbId}.json`);
-    const cinemetaData = await cinemetaRes.json();
-    return cinemetaData.meta ? {
-      id: imdbId,
-      type: type,
-      name: cinemetaData.meta.name,
-      poster: cinemetaData.meta.poster || `https://images.metahub.space/poster/medium/${imdbId}/img`,
-      description: cinemetaData.meta.description
-    } : null;
+    return null;
   } catch (e) { return null; }
 }
 
@@ -113,20 +95,24 @@ app.get("/manifest.json", (req, res) => {
 
 app.get("/catalog/:type/:id.json", async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const type = req.params.type === "movie" ? "movie" : "tv_series";
+  const type = req.params.type;
   const platform = req.params.id.split("_")[0].toLowerCase();
+  const wmType = type === "movie" ? "movie" : "tv_series";
 
-  // 1. Get IDs (Watchmode -> Gemini -> Static)
-  let ids = await getLiveIDs(platform, type);
-  if (!ids || ids.length === 0) ids = await askGemini(platform, req.params.type);
-  if (!ids || ids.length === 0) ids = ["tt30141680"]; // Maharaja as safety
+  // Priority 1: Watchmode (Specific to the App)
+  let ids = await getWatchmodeIDs(platform, wmType);
+  
+  if (ids && ids.length > 0) {
+    const metas = await Promise.all(ids.map(id => getMeta(id, type)));
+    return res.json({ metas: metas.filter(m => m !== null) });
+  }
 
-  // 2. Map to Metadata
-  const metas = await Promise.all(ids.map(id => getMeta(id, req.params.type)));
-  res.json({ metas: metas.filter(m => m !== null && m.poster) });
+  // Priority 2: TMDB Discovery (General Tamil Content if Watchmode is empty)
+  const discoveryResults = await discoverTMDB(type);
+  res.json({ metas: discoveryResults });
 });
 
-app.get("/", (req, res) => res.send("Tamil OTT 4.1 Live with Watchmode."));
+app.get("/", (req, res) => res.send("Tamil OTT 4.2: TMDB Engine Active."));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT);
