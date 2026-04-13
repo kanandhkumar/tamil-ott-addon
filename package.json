@@ -1,20 +1,12 @@
 {
-  "name": "tamil-ott-stremio",
+  "name": "tamil-ott",
   "version": "1.0.0",
-  "description": "Tamil OTT Catalogs - SunNXT, ZEE5, Hotstar, Aha, SonyLIV",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "@stremiocloud/addon-sdk": "^1.1.0",
-    "node-fetch": "^3.3.2",
-    "express": "^4.19.2"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "author": "kanand",
-  "license": "MIT"
+    "@stremiocloud/addon-sdk": "1.1.0",
+    "node-fetch": "3.3.2"
+  }
 }
