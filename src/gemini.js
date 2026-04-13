@@ -1,7 +1,7 @@
 const fetch = require("node-fetch");
 
-// HARD-CODED KEY
-const GEMINI_KEY = "AIzaSyBh7kP8ZOJpJu99EU25YCLymO5m1BT2_9c";
+// This is safe. It pulls from Render's secret environment.
+const GEMINI_KEY = process.env.GEMINI_API_KEY; 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
 const geminiCache = new Map();
@@ -13,6 +13,8 @@ const PLATFORM_NAMES = {
 };
 
 async function askGemini(platform, subtype) {
+  if (!GEMINI_KEY) return null; // Safety check
+
   const cacheKey = `${platform}_${subtype}`;
   const cached = geminiCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
