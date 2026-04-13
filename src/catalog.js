@@ -16,50 +16,38 @@ const PLATFORM_DATA = {
   aha_webseries: ["tt15256628", "tt14444952", "tt13615776", "tt11847842", "tt10954984"]
 };
 
-const metaCache = new Map();
-
-async function tmdbGet(path, params = {}) {
-  if (!TMDB_KEY) return null;
-  const url = new URL(`${TMDB_BASE}${path}`);
-  url.searchParams.set("api_key", TMDB_KEY);
-  url.searchParams.set("language", "en-US");
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  try {
-    const res = await fetch(url.toString());
-    return res.ok ? res.json() : null;
-  } catch { return null; }
-}
-
 async function getMetaByImdb(imdbId, type) {
-  if (metaCache.has(imdbId)) return metaCache.get(imdbId);
-  const data = await tmdbGet(`/find/${imdbId}`, { external_source: "imdb_id" });
-  
-  // FIX: Force the correct result array based on content type
-  const results = type === "movie" ? data?.movie_results : data?.tv_results;
-  const r = results?.[0];
+  try {
+    const url = `${TMDB_BASE}/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id&language=en-US`;
+    const res = await fetch(url);
+    const data = await res.json();
+    
+    // Check movie_results for movies OR tv_results for series
+    const r = type === "movie" ? data.movie_results?.[0] : data.tv_results?.[0];
 
-  if (!r) return null;
+    if (!r) return null;
 
-  const meta = {
-    id: imdbId,
-    type,
-    name: r.title || r.name,
-    poster: r.poster_path ? `${TMDB_IMG}${r.poster_path}` : null,
-    background: r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : null,
-    description: r.overview,
-    releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4)
-  };
-  metaCache.set(imdbId, meta);
-  return meta;
+    return {
+      id: imdbId,
+      type: type,
+      name: r.title || r.name,
+      poster: `${TMDB_IMG}${r.poster_path}`,
+      background: `https://image.tmdb.org/t/p/w1280${r.backdrop_path}`,
+      description: r.overview,
+      releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4)
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 async function fetchCatalog(catalogId, type, extra = {}) {
-  const skip = parseInt(extra.skip || 0);
   const ids = PLATFORM_DATA[catalogId] || [];
+  const skip = parseInt(extra.skip || 0);
   const pageIds = ids.slice(skip, skip + 20);
-  if (!pageIds.length) return [];
+
   const results = await Promise.all(pageIds.map(id => getMetaByImdb(id, type)));
-  return results.filter(Boolean);
+  return results.filter(val => val !== null);
 }
 
 module.exports = { fetchCatalog };
