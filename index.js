@@ -6,39 +6,41 @@ const WATCHMODE_KEY = process.env.WATCHMODE_API_KEY;
 const TMDB_KEY = process.env.TMDB_API_KEY;
 
 const manifest = {
-  id: "com.kanand.tamilott.watchmode",
+  id: "com.kanand.tamilott.full",
   name: "Tamil OTT",
-  version: "4.0.0",
+  version: "4.2.0",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
+    { id: "netflix", type: "movie", name: "Netflix Movies" },
+    { id: "prime", type: "movie", name: "Prime Video Movies" },
     { id: "zee5", type: "movie", name: "ZEE5 Movies" },
     { id: "sunnxt", type: "movie", name: "SunNXT Movies" },
     { id: "sonyliv", type: "movie", name: "SonyLIV Movies" },
-    { id: "aha", type: "series", name: "Aha Series" }
+    { id: "jiohotstar", type: "movie", name: "JioHotstar Movies" }
   ],
   idPrefixes: ["tt"]
 };
 
-// Replace these with real Watchmode source IDs from /sources endpoint
 const SOURCE_IDS = {
-  zee5: "zee5",      // Get exact ID from https://api.watchmode.com/v1/sources/?apiKey=YOUR_KEY&regions=IN
-  sunnxt: "sunnxt",  // 
-  sonyliv: "sonyliv",// 
-  aha: "aha"         // 
+  netflix: "203",
+  prime: "26",
+  zee5: "450",
+  sunnxt: "433",
+  sonyliv: "459",
+  jiohotstar: "447"
 };
 
 async function getWatchmodeTitles(sourceId, type, limit = 20) {
-  if (!WATCHMODE_KEY) {
-    return [];
-  }
+  if (!WATCHMODE_KEY) return [];
 
   try {
     const url = `https://api.watchmode.com/v1/list-titles/?apiKey=${WATCHMODE_KEY}&source_ids=${sourceId}&source_country=IN&types=${type}&limit=${limit}`;
     const res = await fetch(url);
     const data = await res.json();
     return data.titles || [];
-  } catch {
+  } catch (e) {
+    console.log(`Watchmode error for ${sourceId}:`, e.message);
     return [];
   }
 }
@@ -62,7 +64,7 @@ async function getTMDBMeta(imdbId, type) {
       background: result.backdrop_path ? `https://image.tmdb.org/t/p/w1280${result.backdrop_path}` : undefined,
       description: result.overview || ""
     };
-  } catch {
+  } catch (e) {
     return null;
   }
 }
@@ -83,20 +85,25 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
     return res.json({ metas: [] });
   }
 
+  console.log(`Fetching ${type} from Watchmode source ${sourceId} (${catalogId})`);
+  
   const titles = await getWatchmodeTitles(sourceId, type);
   const metas = await Promise.all(
     titles.slice(0, 20).map(title => getTMDBMeta(title.imdb_id, type))
   );
 
-  res.json({ metas: metas.filter(m => m && m.name) });
+  const validMetas = metas.filter(m => m && m.name && m.name.length > 0);
+  console.log(`Found ${validMetas.length} valid titles for ${catalogId}`);
+
+  res.json({ metas: validMetas });
 });
 
 app.get("/", (req, res) => {
   res.send(`
-    Tamil OTT Addon<br>
+    Tamil OTT v4.2 ✅<br>
+    Netflix=203 | Prime=26 | ZEE5=450 | SunNXT=433 | SonyLIV=459 | JioHotstar=447<br>
     /manifest.json - Stremio manifest<br>
-    /catalog/movie/zee5.json - ZEE5 movies<br>
-    Watchmode + TMDb powered
+    /catalog/movie/netflix.json - Test Netflix
   `);
 });
 
