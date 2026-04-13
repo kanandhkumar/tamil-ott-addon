@@ -1,22 +1,32 @@
 const express = require("express");
-const cors = require("cors");
-const manifest = require("./manifest");
-const { fetchCatalog } = require("./catalog");
-
 const app = express();
-app.use(cors());
+const { fetchCatalog } = require("./src/catalog");
 
-app.get("/manifest.json", (req, res) => res.json(manifest));
+const manifest = {
+  id: "com.kanandhkumar.tamilott",
+  name: "Tamil OTT Catalog",
+  version: "1.4.1",
+  resources: ["catalog"],
+  types: ["movie", "series"],
+  catalogs: [
+    { id: "netflix_tamil", type: "movie", name: "Netflix - Tamil" },
+    { id: "prime_tamil", type: "movie", name: "Prime - Tamil" },
+    { id: "sunnxt_movies", type: "movie", name: "SunNXT - Movies" },
+    { id: "aha_movies", type: "movie", name: "Aha Tamil - Movies" }
+  ],
+  idPrefixes: ["tt"]
+};
 
-app.get("/catalog/:type/:id.json", async (req, res) => {
-  const { type, id } = req.params;
-  try {
-    const metas = await fetchCatalog(id, type, { skip: req.query.skip || 0 });
-    res.json({ metas });
-  } catch (err) {
-    res.json({ metas: [] });
-  }
+app.get("/manifest.json", (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.json(manifest);
 });
 
-const port = process.env.PORT || 10000;
-app.listen(port, () => console.log(`Server running on port ${port}`));
+app.get("/catalog/:type/:id.json", async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const metas = await fetchCatalog(req.params.id, req.params.type);
+  res.json({ metas });
+});
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
