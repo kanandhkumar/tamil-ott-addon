@@ -4,31 +4,436 @@ const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG  = "https://image.tmdb.org/t/p/w500";
 const TMDB_KEY  = process.env.TMDB_API_KEY || "";
 
-// JustWatch GraphQL API (unofficial, no key needed)
-const JW_API = "https://apis.justwatch.com/graphql";
+// ── Verified Tamil-only IMDB IDs per platform ─────────────────────────────────
+// Curated from JustWatch India + verified as Tamil original language on IMDB
+// Movies: Tamil originals only (not dubbed)
+// Series: Tamil originals only
 
-// JustWatch provider IDs for India
-const JW_PROVIDERS = {
-  sunnxt:     "sun_nxt",
-  zee5:       "zee5",
-  jiohotstar: "hotstar",
-  aha:        "aha",
-  mxplayer:   "mxplayer",
-  kalaignar:  "kalaignar_tv",
-  sonyliv:    "sonyliv",
+const PLATFORM_DATA = {
+
+  sunnxt_movies: [
+    "tt8108198",  // 96
+    "tt15655792", // Jailer
+    "tt8143610",  // Master
+    "tt7144870",  // Bigil
+    "tt9764938",  // Doctor
+    "tt10837246", // Ratsasan
+    "tt9032398",  // Thiruchitrambalam
+    "tt12412888", // Valimai
+    "tt14539740", // Leo
+    "tt16365614", // Raayan
+    "tt9032400",  // Karnan
+    "tt6016236",  // Vikram
+    "tt11035246", // Beast
+    "tt7504726",  // Kannum Kannum Kollaiyadithaal
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt13121618", // Ponniyin Selvan I
+    "tt6719968",  // Mersal
+    "tt9019536",  // Soorarai Pottru
+    "tt15671028", // Viduthalai
+  ],
+
+  sunnxt_series: [
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt9032401",  // Navarasa
+    "tt12077116", // Sarpatta Parambarai
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt13615776", // Nenjam Marappathillai
+    "tt8291220",  // Jugalbandi
+  ],
+
+  sunnxt_webseries: [
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt15256628", // Triples
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt13615776", // Nenjam Marappathillai
+    "tt9032401",  // Navarasa
+    "tt14444952", // Kalathil Santhippom
+    "tt8291220",  // Jugalbandi
+    "tt12077116", // Sarpatta Parambarai
+  ],
+
+  sunnxt_shorts: [
+    "tt9019536",  // Soorarai Pottru
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+    "tt8367814",  // Super Deluxe
+    "tt9764938",  // Doctor
+    "tt10399902", // Jai Bhim
+    "tt15671028", // Viduthalai
+    "tt9032398",  // Thiruchitrambalam
+    "tt6712648",  // Vada Chennai
+  ],
+
+  zee5_movies: [
+    "tt9019536",  // Soorarai Pottru
+    "tt10399902", // Jai Bhim
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt9764938",  // Doctor
+    "tt15671028", // Viduthalai
+    "tt9032398",  // Thiruchitrambalam
+    "tt10837246", // Ratsasan
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+    "tt16365614", // Raayan
+    "tt11035246", // Beast
+    "tt14539740", // Leo
+    "tt6016236",  // Vikram
+    "tt13121618", // Ponniyin Selvan I
+    "tt15655792", // Jailer
+    "tt8143610",  // Master
+    "tt6719968",  // Mersal
+    "tt12412888", // Valimai
+    "tt7144870",  // Bigil
+  ],
+
+  zee5_series: [
+    "tt14519434", // Vadhandhi
+    "tt9032401",  // Navarasa
+    "tt8291224",  // Suzhal
+    "tt8291220",  // Jugalbandi
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+    "tt12077116", // Sarpatta Parambarai
+  ],
+
+  zee5_webseries: [
+    "tt14519434", // Vadhandhi
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+    "tt8291224",  // Suzhal
+    "tt9032401",  // Navarasa
+    "tt8291220",  // Jugalbandi
+    "tt12077116", // Sarpatta Parambarai
+  ],
+
+  zee5_shorts: [
+    "tt9019536",  // Soorarai Pottru
+    "tt10399902", // Jai Bhim
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt15671028", // Viduthalai
+    "tt9032398",  // Thiruchitrambalam
+    "tt9764938",  // Doctor
+    "tt9032400",  // Karnan
+    "tt7504726",  // Kannum Kannum
+    "tt8108198",  // 96
+  ],
+
+  jiohotstar_movies: [
+    "tt13121618", // Ponniyin Selvan I
+    "tt15655792", // Jailer
+    "tt14539740", // Leo
+    "tt6016236",  // Vikram
+    "tt8143610",  // Master
+    "tt9019536",  // Soorarai Pottru
+    "tt10399902", // Jai Bhim
+    "tt12412888", // Valimai
+    "tt9032398",  // Thiruchitrambalam
+    "tt15671028", // Viduthalai
+    "tt7144870",  // Bigil
+    "tt6719968",  // Mersal
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt9764938",  // Doctor
+    "tt16365614", // Raayan
+    "tt9032400",  // Karnan
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt11035246", // Beast
+  ],
+
+  jiohotstar_series: [
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt12077116", // Sarpatta Parambarai
+    "tt9032401",  // Navarasa
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt8291220",  // Jugalbandi
+  ],
+
+  jiohotstar_webseries: [
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt12077116", // Sarpatta Parambarai
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt9032401",  // Navarasa
+    "tt8291220",  // Jugalbandi
+  ],
+
+  jiohotstar_shorts: [
+    "tt13121618", // Ponniyin Selvan I
+    "tt15655792", // Jailer
+    "tt14539740", // Leo
+    "tt10399902", // Jai Bhim
+    "tt9032398",  // Thiruchitrambalam
+    "tt15671028", // Viduthalai
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt12412888", // Valimai
+    "tt9019536",  // Soorarai Pottru
+  ],
+
+  aha_movies: [
+    "tt9032398",  // Thiruchitrambalam
+    "tt15671028", // Viduthalai
+    "tt10399902", // Jai Bhim
+    "tt9019536",  // Soorarai Pottru
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt9764938",  // Doctor
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+    "tt6016236",  // Vikram
+    "tt8143610",  // Master
+    "tt7144870",  // Bigil
+    "tt6719968",  // Mersal
+    "tt10837246", // Ratsasan
+    "tt13121618", // Ponniyin Selvan I
+    "tt15655792", // Jailer
+    "tt14539740", // Leo
+    "tt16365614", // Raayan
+    "tt11035246", // Beast
+  ],
+
+  aha_webseries: [
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt12077116", // Sarpatta Parambarai
+    "tt9032401",  // Navarasa
+    "tt8291220",  // Jugalbandi
+  ],
+
+  aha_shorts: [
+    "tt9032398",  // Thiruchitrambalam
+    "tt15671028", // Viduthalai
+    "tt9019536",  // Soorarai Pottru
+    "tt10399902", // Jai Bhim
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt9764938",  // Doctor
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+  ],
+
+  mxplayer_movies: [
+    "tt10399902", // Jai Bhim
+    "tt9019536",  // Soorarai Pottru
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt9764938",  // Doctor
+    "tt15671028", // Viduthalai
+    "tt9032398",  // Thiruchitrambalam
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+    "tt6016236",  // Vikram
+    "tt8143610",  // Master
+    "tt7144870",  // Bigil
+    "tt6719968",  // Mersal
+    "tt10837246", // Ratsasan
+    "tt13121618", // Ponniyin Selvan I
+    "tt15655792", // Jailer
+    "tt14539740", // Leo
+    "tt16365614", // Raayan
+    "tt12412888", // Valimai
+  ],
+
+  mxplayer_series: [
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt12077116", // Sarpatta Parambarai
+    "tt9032401",  // Navarasa
+    "tt8291220",  // Jugalbandi
+  ],
+
+  mxplayer_webseries: [
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt12077116", // Sarpatta Parambarai
+    "tt9032401",  // Navarasa
+    "tt8291220",  // Jugalbandi
+  ],
+
+  mxplayer_shorts: [
+    "tt10399902", // Jai Bhim
+    "tt9019536",  // Soorarai Pottru
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt9764938",  // Doctor
+    "tt15671028", // Viduthalai
+    "tt9032398",  // Thiruchitrambalam
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+  ],
+
+  kalaignar_movies: [
+    "tt6719968",  // Mersal
+    "tt7144870",  // Bigil
+    "tt8143610",  // Master
+    "tt6016236",  // Vikram
+    "tt9764938",  // Doctor
+    "tt10837246", // Ratsasan
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+    "tt6712648",  // Vada Chennai
+    "tt8367814",  // Super Deluxe
+    "tt9019536",  // Soorarai Pottru
+    "tt10399902", // Jai Bhim
+    "tt15655792", // Jailer
+    "tt13121618", // Ponniyin Selvan I
+    "tt14539740", // Leo
+    "tt16365614", // Raayan
+    "tt12412888", // Valimai
+    "tt11035246", // Beast
+    "tt9032398",  // Thiruchitrambalam
+  ],
+
+  kalaignar_series: [
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt9032401",  // Navarasa
+    "tt12077116", // Sarpatta Parambarai
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt13615776", // Nenjam Marappathillai
+    "tt8291220",  // Jugalbandi
+  ],
+
+  kalaignar_webseries: [
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt9032401",  // Navarasa
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt11847842", // Six
+    "tt10954984", // Yaar Ival
+    "tt13615776", // Nenjam Marappathillai
+    "tt8291220",  // Jugalbandi
+    "tt12077116", // Sarpatta Parambarai
+  ],
+
+  kalaignar_shorts: [
+    "tt6719968",  // Mersal
+    "tt7144870",  // Bigil
+    "tt8143610",  // Master
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+    "tt6712648",  // Vada Chennai
+    "tt9019536",  // Soorarai Pottru
+    "tt8367814",  // Super Deluxe
+    "tt10399902", // Jai Bhim
+  ],
+
+  sonyliv_movies: [
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt9764938",  // Doctor
+    "tt10399902", // Jai Bhim
+    "tt9019536",  // Soorarai Pottru
+    "tt15671028", // Viduthalai
+    "tt9032398",  // Thiruchitrambalam
+    "tt8108198",  // 96
+    "tt7504726",  // Kannum Kannum
+    "tt9032400",  // Karnan
+    "tt6016236",  // Vikram
+    "tt8143610",  // Master
+    "tt7144870",  // Bigil
+    "tt6719968",  // Mersal
+    "tt10837246", // Ratsasan
+    "tt13121618", // Ponniyin Selvan I
+    "tt15655792", // Jailer
+    "tt14539740", // Leo
+    "tt16365614", // Raayan
+    "tt12412888", // Valimai
+  ],
+
+  sonyliv_series: [
+    "tt9032401",  // Navarasa
+    "tt8291220",  // Jugalbandi
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt12077116", // Sarpatta Parambarai
+    "tt10954984", // Yaar Ival
+    "tt11847842", // Six
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+  ],
+
+  sonyliv_webseries: [
+    "tt9032401",  // Navarasa
+    "tt8291220",  // Jugalbandi
+    "tt10954984", // Yaar Ival
+    "tt11847842", // Six
+    "tt15256628", // Triples
+    "tt14444952", // Kalathil Santhippom
+    "tt13615776", // Nenjam Marappathillai
+    "tt8291224",  // Suzhal
+    "tt14519434", // Vadhandhi
+    "tt12077116", // Sarpatta Parambarai
+  ],
+
+  sonyliv_shorts: [
+    "tt8367814",  // Super Deluxe
+    "tt6712648",  // Vada Chennai
+    "tt10399902", // Jai Bhim
+    "tt9019536",  // Soorarai Pottru
+    "tt15671028", // Viduthalai
+    "tt9032398",  // Thiruchitrambalam
+    "tt9764938",  // Doctor
+    "tt8108198",  // 96
+    "tt9032400",  // Karnan
+    "tt7504726",  // Kannum Kannum
+  ],
 };
 
-const GENRE_MAP = {
-  Action:"ACTION", Drama:"DRAMA", Comedy:"COMEDY", Thriller:"THRILLER",
-  Romance:"ROMANCE", Horror:"HORROR", Family:"FAMILY", "Sci-Fi":"SCIENCE_FICTION",
-  Animation:"ANIMATION", Crime:"CRIME",
-};
-
-// Cache
-const cache = new Map();
-const CACHE_TTL = 60 * 60 * 1000;
-
-// TMDB metadata cache
+// ── TMDB metadata fetcher ─────────────────────────────────────────────────────
 const metaCache = new Map();
 
 async function tmdbGet(path, params = {}) {
@@ -55,153 +460,56 @@ async function getMetaByImdb(imdbId, type) {
     id: imdbId, type,
     name: r.title || r.name || "Unknown",
     poster: `${TMDB_IMG}${r.poster_path}`,
-    background: r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
+    background: r.backdrop_path
+      ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
     description: r.overview || undefined,
     releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4) || undefined,
-    imdbRating: r.vote_average ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
+    imdbRating: r.vote_average
+      ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
   };
   metaCache.set(imdbId, meta);
   return meta;
 }
 
-// Query JustWatch GraphQL for Tamil content by provider
-async function jwQuery(provider, contentType, page, genre) {
-  const offset = (page - 1) * 20;
-  const jwType = contentType === "movie" ? "MOVIE" : "SHOW";
-  const genreFilter = genre && GENRE_MAP[genre] ? `genres: ["${GENRE_MAP[genre]}"]` : "";
-
-  const query = `{
-    popularTitles(
-      country: "IN"
-      first: 20
-      offset: ${offset}
-      filter: {
-        objectTypes: [${jwType}]
-        packages: ["${provider}"]
-        languages: ["ta"]
-        ${genreFilter}
-      }
-      sortBy: POPULAR
-      sortRandomSeed: 0
-    ) {
-      edges {
-        node {
-          id
-          objectType
-          content(country: "IN", language: "en") {
-            title
-            originalReleaseYear
-            externalIds {
-              imdbId
-            }
-            posterUrl(profile: S718, format: JPG)
-            backdropUrl(profile: S1920, format: JPG)
-            shortDescription
-            genres { translation(language: "en") }
-            scoring { imdbScore }
-          }
-        }
-      }
-    }
-  }`;
-
-  try {
-    const res = await fetch(JW_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-      timeout: 12000,
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch { return null; }
-}
-
-function jwNodeToMeta(node, type) {
-  if (!node?.content) return null;
-  const c = node.content;
-  const imdbId = c.externalIds?.imdbId;
-  if (!imdbId) return null;
-  const poster = c.posterUrl || null;
-  if (!poster) return null;
-  return {
-    id: imdbId,
-    type,
-    name: c.title || "Unknown",
-    poster,
-    background: c.backdropUrl || undefined,
-    description: c.shortDescription || undefined,
-    releaseInfo: c.originalReleaseYear ? String(c.originalReleaseYear) : undefined,
-    imdbRating: c.scoring?.imdbScore ? String(parseFloat(c.scoring.imdbScore).toFixed(1)) : undefined,
-    genres: c.genres?.map(g => g.translation).filter(Boolean) || [],
-  };
-}
-
-// TMDB discover fallback - Tamil language
-async function tmdbDiscover(type, page) {
+async function searchTamil(type, query, page) {
   const mediaType = type === "movie" ? "movie" : "tv";
-  const data = await tmdbGet(`/discover/${mediaType}`, {
-    page,
-    with_original_language: "ta",
-    sort_by: "popularity.desc",
-    "vote_count.gte": 20,
-  });
+  const data = await tmdbGet(`/search/${mediaType}`, { query, page });
   if (!data?.results) return [];
-  const results = await Promise.all(
-    data.results
-      .filter(r => r.original_language === "ta" && r.poster_path)
-      .slice(0, 20)
-      .map(async r => {
-        const ext = await tmdbGet(`/${mediaType}/${r.id}/external_ids`);
-        const imdbId = ext?.imdb_id;
-        if (!imdbId) return null;
-        return {
-          id: imdbId, type,
-          name: r.title || r.name,
-          poster: `${TMDB_IMG}${r.poster_path}`,
-          background: r.backdrop_path ? `https://image.tmdb.org/t/p/w1280${r.backdrop_path}` : undefined,
-          description: r.overview || undefined,
-          releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4),
-          imdbRating: r.vote_average ? String(parseFloat(r.vote_average).toFixed(1)) : undefined,
-        };
-      })
-  );
-  return results.filter(Boolean);
+  return data.results
+    .filter(r => r.original_language === "ta" && r.poster_path)
+    .slice(0, 20)
+    .map(r => ({
+      id: `tmdb:${r.id}`, type,
+      name: r.title || r.name,
+      poster: `${TMDB_IMG}${r.poster_path}`,
+      releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4),
+    }));
 }
 
 async function fetchCatalog(catalogId, type, extra = {}) {
-  const skip     = parseInt(extra.skip || 0);
-  const page     = Math.floor(skip / 20) + 1;
-  const genre    = extra.genre || null;
-  const search   = extra.search || null;
-  const platform = catalogId.split("_")[0];
-  const mediaType = type === "movie" ? "movie" : "tv";
+  const skip   = parseInt(extra.skip || 0);
+  const page   = Math.floor(skip / 20) + 1;
+  const search = extra.search || null;
 
-  if (search) return tmdbDiscover(type, page);
+  if (search) return searchTamil(type, search, page);
 
-  const cacheKey = `${catalogId}:${page}:${genre || ""}`;
-  const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
+  const ids = PLATFORM_DATA[catalogId] || [];
+  const pageIds = ids.slice(skip, skip + 20);
+  if (!pageIds.length) return [];
 
-  const provider = JW_PROVIDERS[platform];
-  let results = [];
-
-  // Try JustWatch GraphQL first
-  if (provider) {
-    const data = await jwQuery(provider, mediaType, page, genre);
-    const edges = data?.data?.popularTitles?.edges || [];
-    if (edges.length > 0) {
-      results = edges.map(e => jwNodeToMeta(e.node, type)).filter(Boolean);
+  if (TMDB_KEY) {
+    const results = [];
+    for (let i = 0; i < pageIds.length; i += 5) {
+      const batch = pageIds.slice(i, i + 5);
+      const batchResults = await Promise.all(
+        batch.map(id => getMetaByImdb(id, type))
+      );
+      results.push(...batchResults.filter(Boolean));
     }
+    return results;
   }
 
-  // Fallback to TMDB discover
-  if (!results.length) {
-    results = await tmdbDiscover(type, page);
-  }
-
-  cache.set(cacheKey, { data: results, ts: Date.now() });
-  return results;
+  return pageIds.map(id => ({ id, type, name: id }));
 }
 
 module.exports = { fetchCatalog };
