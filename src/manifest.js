@@ -2,7 +2,7 @@ const manifest = {
   id: "com.kanandhkumar.tamilott",
   name: "Tamil OTT Catalog",
   version: "1.0.0",
-  description: "Tamil Movies and Series categorized by Platform",
+  description: "Tamil Movies and Series by Platform",
   resources: ["catalog"],
   types: ["movie", "series"],
   catalogs: [
@@ -18,5 +18,4 @@ const manifest = {
   ],
   idPrefixes: ["tt"]
 };
-
 module.exports = manifest;
