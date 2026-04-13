@@ -18,14 +18,16 @@ const PLATFORM_DATA = {
 
 async function getMetaByImdb(imdbId, type) {
   try {
+    // We must use backticks for the URL on mobile to ensure it's a clean string
     const url = `${TMDB_BASE}/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id&language=en-US`;
     const res = await fetch(url);
     const data = await res.json();
     
-    // Check movie_results for movies OR tv_results for series
-    const r = type === "movie" ? data.movie_results?.[0] : data.tv_results?.[0];
+    // Force strictly choosing the right array. TMDB find results are arrays.
+    const r = type === "movie" ? (data.movie_results && data.movie_results[0]) : (data.tv_results && data.tv_results[0]);
 
-    if (!r) return null;
+    // If TMDB doesn't find the exact match, return null so we don't show wrong movies
+    if (!r || !r.poster_path) return null;
 
     return {
       id: imdbId,
@@ -33,10 +35,11 @@ async function getMetaByImdb(imdbId, type) {
       name: r.title || r.name,
       poster: `${TMDB_IMG}${r.poster_path}`,
       background: `https://image.tmdb.org/t/p/w1280${r.backdrop_path}`,
-      description: r.overview,
+      description: r.overview || "No description available.",
       releaseInfo: (r.release_date || r.first_air_date || "").slice(0, 4)
     };
-  } catch (e) {
+  } catch (error) {
+    console.error("Fetch Error:", error);
     return null;
   }
 }
@@ -46,8 +49,11 @@ async function fetchCatalog(catalogId, type, extra = {}) {
   const skip = parseInt(extra.skip || 0);
   const pageIds = ids.slice(skip, skip + 20);
 
+  // Use Promise.all to fetch metadata for all IDs in the batch
   const results = await Promise.all(pageIds.map(id => getMetaByImdb(id, type)));
-  return results.filter(val => val !== null);
+  
+  // Filter out any nulls where TMDB failed to find the movie
+  return results.filter(item => item !== null);
 }
 
 module.exports = { fetchCatalog };
