@@ -84,4 +84,93 @@ async function getTrendingTamil(type) {
         return {
           id: idsData.imdb_id,
           type,
-          name:
+          name: item.title || item.name,
+          poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : undefined,
+          background: item.backdrop_path ? `https://image.tmdb.org/t/p/original${item.backdrop_path}` : undefined,
+          description: item.overview || ""
+        };
+      })
+    )
+  );
+
+  const finalTrending = metas.filter(Boolean);
+  setCache(cacheKey, finalTrending);
+  return finalTrending;
+}
+
+// --- MANIFEST ---
+const manifest = {
+  id: "com.kanandhkumar.tamilott",
+  version: "5.0.0",
+  name: "Tamil OTT Pro",
+  description: "Accurate live availability for Tamil content on Netflix, Prime, SunNXT, ZEE5, SonyLIV, JioHotstar.",
+  resources: ["catalog"],
+  types: ["movie", "series"],
+  catalogs: [
+    { id: "netflix_tamil", type: "movie", name: "Netflix - Tamil" },
+    { id: "prime_tamil", type: "movie", name: "Prime - Tamil" },
+    { id: "sunnxt_movies", type: "movie", name: "SunNXT - Movies" },
+    { id: "zee5_movies", type: "movie", name: "ZEE5 - Tamil" },
+    { id: "sonyliv_movies", type: "movie", name: "SonyLIV - Tamil" },
+    { id: "jiohotstar_movies", type: "movie", name: "JioHotstar - Tamil" }
+  ],
+  idPrefixes: ["tt"]
+};
+
+// --- ROUTES ---
+app.get("/manifest.json", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.json(manifest);
+});
+
+app.get("/catalog/:type/:id.json", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+
+  const { type, id } = req.params;
+  const platform = id.split("_")[0];
+
+  const sourceMap = { 
+    netflix: 203, 
+    prime: 26, 
+    sunnxt: 433, 
+    zee5: 450, 
+    sonyliv: 459, 
+    jiohotstar: 447 
+  };
+
+  const targetSourceId = sourceMap[platform];
+  if (!targetSourceId) {
+    console.error(`[Error] Platform ${platform} not found in SourceMap.`);
+    return res.json({ metas: [] });
+  }
+
+  console.log(`[Request] Checking ${platform} for Tamil ${type}s...`);
+
+  // 1. Fetch the most popular Tamil content
+  const trending = await getTrendingTamil(type);
+
+  // 2. Parallel check for streaming availability on the specific platform
+  const limit = pLimit(MAX_CONCURRENCY);
+  const metas = await Promise.all(
+    trending.map(item =>
+      limit(async () => {
+        const isAvailable = await checkStreamingStatus(item.id, targetSourceId);
+        return isAvailable ? item : null;
+      })
+    )
+  );
+
+  const finalResults = metas.filter(Boolean);
+  console.log(`[Success] Found ${finalResults.length} matches for ${platform}.`);
+  res.json({ metas: finalResults });
+});
+
+app.get("/", (req, res) => {
+  res.status(200).send("Tamil OTT Pro 5.0.0 is online. Add /manifest.json to Stremio.");
+});
+
+// Start Server
+app.listen(PORT, () => {
+  console.log(`🚀 Tamil OTT Pro v5.0.0 is live on port ${PORT}`);
+});
