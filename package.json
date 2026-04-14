@@ -1,12 +1,28 @@
 {
-  "name": "tamil-ott-watchmode",
-  "version": "1.0.0",
+  "name": "tamil-ott-pro",
+  "version": "5.0.0",
+  "description": "High-performance Stremio addon for Tamil OTT catalogs using TMDB and Watchmode APIs.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node --watch index.js"
   },
+  "keywords": [
+    "stremio",
+    "addon",
+    "tamil",
+    "ott",
+    "tmdb",
+    "watchmode"
+  ],
+  "author": "Anandh",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.6.9",
+    "p-limit": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
