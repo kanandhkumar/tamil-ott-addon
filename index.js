@@ -86,4 +86,71 @@ async function discoverTMDB(type) {
   }
 }
 
-async function getMeta(imdbId, typ
+async function getMeta(imdbId, type) {
+  if (!TMDB_KEY || !imdbId) return null;
+
+  try {
+    const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const result = type === "movie"
+      ? data.movie_results?.[0]
+      : data.tv_results?.[0];
+
+    if (!result) return null;
+
+    return {
+      id: imdbId,
+      type,
+      name: result.title || result.name || "",
+      poster: result.poster_path
+        ? `https://image.tmdb.org/t/p/w500${result.poster_path}`
+        : undefined,
+      background: result.backdrop_path
+        ? `https://image.tmdb.org/t/p/original${result.backdrop_path}`
+        : undefined,
+      description: result.overview || ""
+    };
+  } catch (e) {
+    console.log(`TMDB meta error for ${imdbId}:`, e.message);
+    return null;
+  }
+}
+
+app.get("/manifest.json", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.json(manifest);
+});
+
+app.get("/catalog/:type/:id.json", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  const type = req.params.type;
+  const platform = req.params.id.split("_")[0].toLowerCase();
+  const wmType = type === "movie" ? "movie" : "tv_series";
+
+  console.log(`Catalog request: ${type} / ${platform}`);
+
+  const ids = await getWatchmodeIDs(platform, wmType);
+
+  if (ids.length > 0) {
+    const metas = await Promise.all(ids.map(id => getMeta(id, type)));
+    const cleanMetas = metas.filter(Boolean);
+    console.log(`Watchmode success for ${platform}: ${cleanMetas.length} titles`);
+    return res.json({ metas: cleanMetas });
+  }
+
+  console.log(`Watchmode empty for ${platform}, using TMDB fallback`);
+  const fallback = await discoverTMDB(type);
+  return res.json({ metas: fallback });
+});
+
+app.get("/", (req, res) => {
+  res.send("Tamil OTT 4.2.1 running");
+});
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
