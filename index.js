@@ -8,42 +8,32 @@ const TMDB_KEY = process.env.TMDB_API_KEY;
 const WATCHMODE_KEY = process.env.WATCHMODE_KEY;
 const PORT = process.env.PORT || 10000;
 
-// --- CONFIG ---
 const CACHE_TTL_MS = 60 * 60 * 1000; 
 const CACHE_MAX_ITEMS = 1000;
-// Keeping concurrency low to stay under Watchmode's radar
-const MAX_CONCURRENCY = 2; 
-const FETCH_TIMEOUT = 10000; // Increased timeout for stability
+const MAX_CONCURRENCY = 1; // Strict serial processing to stop the 500s
+const FETCH_TIMEOUT = 12000; 
 
 const cache = new Map();
 const pLimit = pLimitModule.default || pLimitModule;
 
-// --- SMART FETCH WITH RETRY ---
 async function fetchJson(url, label, retries = 2) {
   for (let i = 0; i <= retries; i++) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT) });
-      
       if (res.ok) return await res.json();
       
-      // If we get a 500 or 429, wait and retry
       if (res.status === 500 || res.status === 429) {
-        console.warn(`[Retry] ${label} returned ${res.status}. Attempt ${i + 1} of ${retries}`);
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5 seconds
+        console.warn(`[Cooldown] ${label} status ${res.status}. Waiting 3s...`);
+        await new Promise(resolve => setTimeout(resolve, 3000)); 
         continue;
       }
-      
-      throw new Error(`${label} failed: ${res.status}`);
+      throw new Error(`Status ${res.status}`);
     } catch (e) {
-      if (i === retries) {
-        console.error(`[Final Error] ${label}:`, e.message);
-        return null;
-      }
+      if (i === retries) return null;
     }
   }
 }
 
-// --- HELPERS ---
 function setCache(key, value) {
   if (cache.size > CACHE_MAX_ITEMS) cache.clear();
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -55,40 +45,37 @@ function getCache(key) {
   return item.value;
 }
 
-// --- WATCHMODE: AVAILABILITY ---
 async function checkStreamingStatus(imdbId, targetSourceId) {
   const cacheKey = `avail:${imdbId}:${targetSourceId}`;
   const cached = getCache(cacheKey);
   if (cached !== null) return cached;
 
   const url = `https://api.watchmode.com/v1/title/${imdbId}/sources/?apiKey=${WATCHMODE_KEY}&regions=IN`;
-  const data = await fetchJson(url, `WM Avail ${imdbId}`);
+  const data = await fetchJson(url, `WM ${imdbId}`);
   
-  if (!data || !Array.isArray(data)) return false;
-
-  const isOnPlatform = data.some(s => s.source_id === targetSourceId);
+  const isOnPlatform = Array.isArray(data) && data.some(s => s.source_id === targetSourceId);
   setCache(cacheKey, isOnPlatform);
   return isOnPlatform;
 }
 
-// --- TMDB: DISCOVERY ---
 async function getTrendingTamil(type) {
   const cacheKey = `trending:${type}`;
   const cached = getCache(cacheKey);
   if (cached) return cached;
 
   const tmdbType = type === "movie" ? "movie" : "tv";
-  const url = `https://api.themoviedb.org/3/discover/${tmdbType}?api_key=${TMDB_KEY}&with_original_language=ta&sort_by=popularity.desc&region=IN&page=1`;
+  const url = `https://api.themoviedb.org/3/discover/${tmdbType}?api_key=${TMDB_KEY}&with_original_language=ta&sort_by=popularity.desc&region=IN`;
 
   const data = await fetchJson(url, "TMDB Discovery");
   if (!data || !data.results) return [];
 
   const limit = pLimit(MAX_CONCURRENCY);
+  // Reduced to Top 12 to ensure success
   const metas = await Promise.all(
-    data.results.slice(0, 30).map(item => // Reduced slice to 30 for speed
+    data.results.slice(0, 12).map(item =>
       limit(async () => {
         const idsUrl = `https://api.themoviedb.org/3/${tmdbType}/${item.id}/external_ids?api_key=${TMDB_KEY}`;
-        const idsData = await fetchJson(idsUrl, "External IDs");
+        const idsData = await fetchJson(idsUrl, "IDs");
         if (!idsData || !idsData.imdb_id) return null;
 
         return {
@@ -103,19 +90,18 @@ async function getTrendingTamil(type) {
     )
   );
 
-  const finalTrending = metas.filter(Boolean);
-  setCache(cacheKey, finalTrending);
-  return finalTrending;
+  const finalResults = metas.filter(Boolean);
+  setCache(cacheKey, finalResults);
+  return finalResults;
 }
 
-// --- ROUTES ---
 app.get("/manifest.json", (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.json({
     id: "com.kanandhkumar.tamilott",
-    version: "5.0.2",
+    version: "5.0.3",
     name: "Tamil OTT Pro",
-    description: "Live Tamil content catalogs.",
+    description: "Verified Tamil catalogs.",
     resources: ["catalog"],
     types: ["movie", "series"],
     catalogs: [
@@ -156,6 +142,6 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
   res.json({ metas: metas.filter(Boolean) });
 });
 
-app.get("/", (req, res) => res.status(200).send("Tamil OTT Pro 5.0.2 Healthy"));
+app.get("/", (req, res) => res.status(200).send("Tamil OTT Pro 5.0.3 Online"));
 
-app.listen(PORT, () => console.log(`🚀 v5.0.2 live on ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 v5.0.3 live` ));
