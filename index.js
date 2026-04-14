@@ -11,15 +11,39 @@ const PORT = process.env.PORT || 10000;
 // --- CONFIG ---
 const CACHE_TTL_MS = 60 * 60 * 1000; 
 const CACHE_MAX_ITEMS = 1000;
-// Lowered to 3 to prevent the '429' errors seen in your logs
-const MAX_CONCURRENCY = 3; 
-const FETCH_TIMEOUT = 7000;
+// Keeping concurrency low to stay under Watchmode's radar
+const MAX_CONCURRENCY = 2; 
+const FETCH_TIMEOUT = 10000; // Increased timeout for stability
 
 const cache = new Map();
-
-// --- HELPER: Fix for p-limit require issues ---
 const pLimit = pLimitModule.default || pLimitModule;
 
+// --- SMART FETCH WITH RETRY ---
+async function fetchJson(url, label, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT) });
+      
+      if (res.ok) return await res.json();
+      
+      // If we get a 500 or 429, wait and retry
+      if (res.status === 500 || res.status === 429) {
+        console.warn(`[Retry] ${label} returned ${res.status}. Attempt ${i + 1} of ${retries}`);
+        await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5 seconds
+        continue;
+      }
+      
+      throw new Error(`${label} failed: ${res.status}`);
+    } catch (e) {
+      if (i === retries) {
+        console.error(`[Final Error] ${label}:`, e.message);
+        return null;
+      }
+    }
+  }
+}
+
+// --- HELPERS ---
 function setCache(key, value) {
   if (cache.size > CACHE_MAX_ITEMS) cache.clear();
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -31,17 +55,6 @@ function getCache(key) {
   return item.value;
 }
 
-async function fetchJson(url, label) {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT) });
-    if (!res.ok) throw new Error(`${label} failed: ${res.status}`);
-    return await res.json();
-  } catch (e) {
-    console.error(`[Network Error] ${label}:`, e.message);
-    return null;
-  }
-}
-
 // --- WATCHMODE: AVAILABILITY ---
 async function checkStreamingStatus(imdbId, targetSourceId) {
   const cacheKey = `avail:${imdbId}:${targetSourceId}`;
@@ -49,7 +62,7 @@ async function checkStreamingStatus(imdbId, targetSourceId) {
   if (cached !== null) return cached;
 
   const url = `https://api.watchmode.com/v1/title/${imdbId}/sources/?apiKey=${WATCHMODE_KEY}&regions=IN`;
-  const data = await fetchJson(url, `Watchmode Avail ${imdbId}`);
+  const data = await fetchJson(url, `WM Avail ${imdbId}`);
   
   if (!data || !Array.isArray(data)) return false;
 
@@ -72,7 +85,7 @@ async function getTrendingTamil(type) {
 
   const limit = pLimit(MAX_CONCURRENCY);
   const metas = await Promise.all(
-    data.results.slice(0, 40).map(item =>
+    data.results.slice(0, 30).map(item => // Reduced slice to 30 for speed
       limit(async () => {
         const idsUrl = `https://api.themoviedb.org/3/${tmdbType}/${item.id}/external_ids?api_key=${TMDB_KEY}`;
         const idsData = await fetchJson(idsUrl, "External IDs");
@@ -100,9 +113,9 @@ app.get("/manifest.json", (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.json({
     id: "com.kanandhkumar.tamilott",
-    version: "5.0.1",
+    version: "5.0.2",
     name: "Tamil OTT Pro",
-    description: "Accurate live availability for Tamil content.",
+    description: "Live Tamil content catalogs.",
     resources: ["catalog"],
     types: ["movie", "series"],
     catalogs: [
@@ -143,6 +156,6 @@ app.get("/catalog/:type/:id.json", async (req, res) => {
   res.json({ metas: metas.filter(Boolean) });
 });
 
-app.get("/", (req, res) => res.status(200).send("Tamil OTT Pro 5.0.1 Online"));
+app.get("/", (req, res) => res.status(200).send("Tamil OTT Pro 5.0.2 Healthy"));
 
-app.listen(PORT, () => console.log(`🚀 v5.0.1 live on ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 v5.0.2 live on ${PORT}`));
