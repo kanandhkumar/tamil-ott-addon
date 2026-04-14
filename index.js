@@ -10,10 +10,12 @@ console.log("TMDB_KEY exists:", !!TMDB_KEY);
 
 const manifest = {
   id: "com.kanandhkumar.tamilott",
-  name: "Tamil OTT Catalog",
   version: "4.2.1",
+  name: "Tamil OTT Catalog",
+  description: "Tamil movie catalogs for Netflix, Prime Video, SunNXT, ZEE5, SonyLIV and JioHotstar.",
+  logo: "https://www.stremio.com/website/stremio-logo-small.png",
   resources: ["catalog"],
-  types: ["movie", "series"],
+  types: ["movie"],
   catalogs: [
     { id: "netflix_tamil", type: "movie", name: "Netflix - Tamil" },
     { id: "prime_tamil", type: "movie", name: "Prime - Tamil" },
@@ -41,116 +43,4 @@ async function getWatchmodeIDs(platform, wmType) {
   if (!sourceId) return [];
 
   try {
-    const url = `https://api.watchmode.com/v1/list-titles/?apiKey=${WATCHMODE_KEY}&source_ids=${sourceId}&types=${wmType}&regions=IN&limit=12`;
-    const res = await fetch(url);
-    const data = await res.json();
-
-    if (!data.titles || !Array.isArray(data.titles)) return [];
-
-    return data.titles
-      .map(t => t.imdb_id)
-      .filter(id => typeof id === "string" && id.startsWith("tt"));
-  } catch (e) {
-    console.log(`Watchmode error for ${platform}:`, e.message);
-    return [];
-  }
-}
-
-async function discoverTMDB(type) {
-  if (!TMDB_KEY) return [];
-
-  try {
-    const tmdbType = type === "movie" ? "movie" : "tv";
-    const url = `https://api.themoviedb.org/3/discover/${tmdbType}?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&sort_by=popularity.desc`;
-    const res = await fetch(url);
-    const data = await res.json();
-
-    if (!data.results || !Array.isArray(data.results)) return [];
-
-    return data.results
-      .filter(item => item.poster_path)
-      .slice(0, 12)
-      .map(item => ({
-        id: `tmdb:${tmdbType}:${item.id}`,
-        type,
-        name: item.title || item.name || "",
-        poster: `https://image.tmdb.org/t/p/w500${item.poster_path}`,
-        background: item.backdrop_path
-          ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
-          : undefined,
-        description: item.overview || ""
-      }));
-  } catch (e) {
-    console.log("TMDB discover error:", e.message);
-    return [];
-  }
-}
-
-async function getMeta(imdbId, type) {
-  if (!TMDB_KEY || !imdbId) return null;
-
-  try {
-    const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_KEY}&external_source=imdb_id`;
-    const res = await fetch(url);
-    const data = await res.json();
-
-    const result = type === "movie"
-      ? data.movie_results?.[0]
-      : data.tv_results?.[0];
-
-    if (!result) return null;
-
-    return {
-      id: imdbId,
-      type,
-      name: result.title || result.name || "",
-      poster: result.poster_path
-        ? `https://image.tmdb.org/t/p/w500${result.poster_path}`
-        : undefined,
-      background: result.backdrop_path
-        ? `https://image.tmdb.org/t/p/original${result.backdrop_path}`
-        : undefined,
-      description: result.overview || ""
-    };
-  } catch (e) {
-    console.log(`TMDB meta error for ${imdbId}:`, e.message);
-    return null;
-  }
-}
-
-app.get("/manifest.json", (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.json(manifest);
-});
-
-app.get("/catalog/:type/:id.json", async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-
-  const type = req.params.type;
-  const platform = req.params.id.split("_")[0].toLowerCase();
-  const wmType = type === "movie" ? "movie" : "tv_series";
-
-  console.log(`Catalog request: ${type} / ${platform}`);
-
-  const ids = await getWatchmodeIDs(platform, wmType);
-
-  if (ids.length > 0) {
-    const metas = await Promise.all(ids.map(id => getMeta(id, type)));
-    const cleanMetas = metas.filter(Boolean);
-    console.log(`Watchmode success for ${platform}: ${cleanMetas.length} titles`);
-    return res.json({ metas: cleanMetas });
-  }
-
-  console.log(`Watchmode empty for ${platform}, using TMDB fallback`);
-  const fallback = await discoverTMDB(type);
-  return res.json({ metas: fallback });
-});
-
-app.get("/", (req, res) => {
-  res.send("Tamil OTT 4.2.1 running");
-});
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+    const url = `https://api.watchmode.com/v1/list-titles/?apiKey=${WATCHMODE_KEY}&source_ids=${sourceId}&types=${wmType}&regions
