@@ -29,10 +29,10 @@ async function updateDailyList() {
     const startDate = "2025-01-01";
     const regionalLangs = "hi|te|ml|kn";
     
-    console.log(`🔄 Mega Sync: ${today} | Re-ordering all rows Newest -> Oldest...`);
+    console.log(`🔄 Refined Sync: ${today} | Filtering for Tamil Dubbed Hollywood...`);
 
     try {
-        // 1. PURE TAMIL (Using primary_release_date.desc for strict order)
+        // 1. PURE TAMIL 
         const tMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
         const tSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
         
@@ -40,9 +40,10 @@ async function updateDailyList() {
         const indMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=${regionalLangs}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
         const indSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&with_original_language=${regionalLangs}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
 
-        // 3. ENGLISH HITS
-        const engMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
-        const engSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
+        // 3. ENGLISH REFINED (Hollywood with Tamil audio/translation)
+        // Added 'with_spoken_languages=ta' to ensure they have Tamil tracks
+        const engMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&with_spoken_languages=ta&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
+        const engSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&with_spoken_languages=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
 
         const [rawTM, rawTS, rawIndM, rawIndS, rawEngM, rawEngS] = await Promise.all([
             fetchAllPages(tMovieUrl), fetchAllPages(tSeriesUrl), 
@@ -50,7 +51,7 @@ async function updateDailyList() {
             fetchAllPages(engMovieUrl, 3), fetchAllPages(engSeriesUrl, 3)
         ]);
 
-        // Process and APPLY STIRCT SORTING to every row
+        // Process and strictly sort
         masterList.tMovies = (await processItems(rawTM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
         masterList.tSeries = (await processItems(rawTS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
         
@@ -60,7 +61,7 @@ async function updateDailyList() {
         masterList.eMovies = (await processItems(rawEngM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
         masterList.eSeries = (await processItems(rawEngS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
 
-        console.log(`✅ Success! All 6 Rows re-ordered from Newest to Oldest.`);
+        console.log(`✅ Success! Hollywood rows now filtered for Tamil audio.`);
     } catch (e) { console.error("Sync failed", e); }
 }
 
@@ -80,16 +81,16 @@ async function convertToPlayable(item, type) {
         const res = await fetch(idUrl);
         const ids = await res.json();
         
-        // Grab the date safely based on type
         const date = type === 'movie' ? item.release_date : item.first_air_date;
-        
+        if (!date) return null; // Skip items with no release date
+
         return {
             id: ids.imdb_id || `tmdb:${item.id}`,
             name: item.title || item.name,
             type: type === 'movie' ? 'movie' : 'series',
             poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
-            release_date: date, // Keep for sorting
-            first_air_date: date, // Keep for sorting
+            release_date: date,
+            first_air_date: date,
             description: `📅 ${date} | ⭐ ${item.vote_average || 'N/A'}`
         };
     } catch (e) { return null; }
@@ -101,10 +102,10 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.tamil.v7.mega",
-        version: "7.3.1",
+        id: "com.anandh.tamil.v7.refined",
+        version: "7.3.2",
         name: "Tamil Pro Max 2025",
-        description: "6 Rows - Organized New to Old",
+        description: "Organized Rows - Hollywood with Tamil Audio",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: [
@@ -112,8 +113,8 @@ app.get("/manifest.json", (req, res) => {
             { id: "pure_tamil_s", type: "series", name: "New Tamil Series (Pure)" },
             { id: "ind_dub_m", type: "movie", name: "New Indian Dubbed Movies" },
             { id: "ind_dub_s", type: "series", name: "New Indian Dubbed Series" },
-            { id: "eng_dub_m", type: "movie", name: "English Hits (Tamil Dub)" },
-            { id: "eng_dub_s", type: "series", name: "English Series (Tamil Dub)" }
+            { id: "eng_dub_m", type: "movie", name: "Hollywood (Tamil Dubbed)" },
+            { id: "eng_dub_s", type: "series", name: "Hollywood Series (Tamil Dubbed)" }
         ],
         idPrefixes: ["tt", "tmdb"]
     });
@@ -132,4 +133,4 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     res.json({ metas: list || [] });
 });
 
-app.listen(PORT, () => console.log("🚀 v7.3.1 Newest-First Server Live"));
+app.listen(PORT, () => console.log("🚀 v7.3.2 Refined Server Live"));
