@@ -5,11 +5,10 @@ const app = express();
 const TMDB_KEY = process.env.TMDB_API_KEY;
 const PORT = process.env.PORT || 10000;
 
-// Central storage for your 6 custom rows
 let masterList = { 
-    tMovies: [], tSeries: [], // Pure Tamil
-    dMovies: [], dSeries: [], // Dubbed Regional (Indian)
-    eMovies: [], eSeries: []  // English Hits
+    tMovies: [], tSeries: [], 
+    dMovies: [], dSeries: [], 
+    eMovies: [], eSeries: []  
 };
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
@@ -30,20 +29,20 @@ async function updateDailyList() {
     const startDate = "2025-01-01";
     const regionalLangs = "hi|te|ml|kn";
     
-    console.log(`🔄 Mega Sync: ${today} | Building 6 Specialized Rows...`);
+    console.log(`🔄 Mega Sync: ${today} | Re-ordering all rows Newest -> Oldest...`);
 
     try {
-        // 1. PURE TAMIL (Movies & Series)
+        // 1. PURE TAMIL (Using primary_release_date.desc for strict order)
         const tMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
         const tSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
         
         // 2. INDIAN REGIONAL DUBBED (Hindi, Telugu, etc.)
-        const indMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=${regionalLangs}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
-        const indSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&with_original_language=${regionalLangs}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
+        const indMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=${regionalLangs}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
+        const indSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&with_original_language=${regionalLangs}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
 
-        // 3. ENGLISH HITS (Hollywood Series & Movies)
-        const engMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
-        const engSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
+        // 3. ENGLISH HITS
+        const engMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
+        const engSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
 
         const [rawTM, rawTS, rawIndM, rawIndS, rawEngM, rawEngS] = await Promise.all([
             fetchAllPages(tMovieUrl), fetchAllPages(tSeriesUrl), 
@@ -51,23 +50,17 @@ async function updateDailyList() {
             fetchAllPages(engMovieUrl, 3), fetchAllPages(engSeriesUrl, 3)
         ]);
 
-        // Process all categories with re-sorting for the "Newest First" view
-        masterList.tMovies = await processItems(rawTM.slice(0, 50), 'movie');
-        masterList.tSeries = await processItems(rawTS.slice(0, 50), 'tv');
+        // Process and APPLY STIRCT SORTING to every row
+        masterList.tMovies = (await processItems(rawTM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
+        masterList.tSeries = (await processItems(rawTS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
         
-        const indM = await processItems(rawIndM.slice(0, 50), 'movie');
-        masterList.dMovies = indM.sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
+        masterList.dMovies = (await processItems(rawIndM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
+        masterList.dSeries = (await processItems(rawIndS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
 
-        const indS = await processItems(rawIndS.slice(0, 50), 'tv');
-        masterList.dSeries = indS.sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
+        masterList.eMovies = (await processItems(rawEngM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
+        masterList.eSeries = (await processItems(rawEngS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
 
-        const engM = await processItems(rawEngM.slice(0, 50), 'movie');
-        masterList.eMovies = engM.sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
-
-        const engS = await processItems(rawEngS.slice(0, 50), 'tv');
-        masterList.eSeries = engS.sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
-
-        console.log(`✅ Success! All 6 Rows Synced for ${today}.`);
+        console.log(`✅ Success! All 6 Rows re-ordered from Newest to Oldest.`);
     } catch (e) { console.error("Sync failed", e); }
 }
 
@@ -86,12 +79,18 @@ async function convertToPlayable(item, type) {
         const idUrl = `https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`;
         const res = await fetch(idUrl);
         const ids = await res.json();
+        
+        // Grab the date safely based on type
+        const date = type === 'movie' ? item.release_date : item.first_air_date;
+        
         return {
             id: ids.imdb_id || `tmdb:${item.id}`,
             name: item.title || item.name,
             type: type === 'movie' ? 'movie' : 'series',
             poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
-            description: `📅 ${item.release_date || item.first_air_date} | ⭐ ${item.vote_average || 'N/A'}`
+            release_date: date, // Keep for sorting
+            first_air_date: date, // Keep for sorting
+            description: `📅 ${date} | ⭐ ${item.vote_average || 'N/A'}`
         };
     } catch (e) { return null; }
 }
@@ -103,9 +102,9 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
         id: "com.anandh.tamil.v7.mega",
-        version: "7.3.0",
+        version: "7.3.1",
         name: "Tamil Pro Max 2025",
-        description: "6 Custom Rows for Movies & Series (Tamil Dubbed)",
+        description: "6 Rows - Organized New to Old",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: [
@@ -133,4 +132,4 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     res.json({ metas: list || [] });
 });
 
-app.listen(PORT, () => console.log("🚀 v7.3.0 Mega Server Live"));
+app.listen(PORT, () => console.log("🚀 v7.3.1 Newest-First Server Live"));
