@@ -8,34 +8,40 @@ const PORT = process.env.PORT || 10000;
 let dailyTamilList = { movies: [], series: [] };
 
 async function updateDailyList() {
-    console.log("🌞 Starting daily Tamil content scan...");
-    try {
-        // 1. Original Tamil Movies (Latest)
-        const urlOrig = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&sort_by=primary_release_date.desc&region=IN`;
-        
-        // 2. Dubbed/Popular in India (To find dubbed Hollywood/South hits)
-        const urlDubbed = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&certification_country=IN&sort_by=popularity.desc&with_runtime.gte=60`;
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const startDate = "2025-01-01";
+    
+    console.log(`🌞 Refreshing Tamil Library (Range: ${startDate} to ${today})...`);
 
-        const [resO, resD, resS] = await Promise.all([
-            fetch(urlOrig),
-            fetch(urlDubbed),
-            fetch(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&sort_by=first_air_date.desc`)
+    try {
+        // 1. Movies: Original Tamil + Popular in India (Dubbed)
+        const movieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc&region=IN`;
+        const dubbedUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&certification_country=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
+
+        // 2. Series: Original Tamil Series
+        const seriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
+
+        const [resM, resD, resS] = await Promise.all([
+            fetch(movieUrl),
+            fetch(dubbedUrl),
+            fetch(seriesUrl)
         ]);
 
-        const dataO = await resO.json();
+        const dataM = await resM.json();
         const dataD = await resD.json();
         const dataS = await resS.json();
 
-        // Combine and remove duplicates
-        const combinedMovies = [...(dataO.results || []), ...(dataD.results || [])];
+        // Merge and clean Movie list
+        const combinedMovies = [...(dataM.results || []), ...(dataD.results || [])];
         const uniqueMovies = Array.from(new Map(combinedMovies.map(m => [m.id, m])).values());
 
-        dailyTamilList.movies = uniqueMovies.slice(0, 40).map(formatTMDB);
-        dailyTamilList.series = (dataS.results || []).slice(0, 20).map(formatTMDB);
+        dailyTamilList.movies = uniqueMovies.slice(0, 60).map(formatTMDB);
+        dailyTamilList.series = (dataS.results || []).slice(0, 40).map(formatTMDB);
         
-        console.log(`✅ Scan Complete. Total unique items: ${dailyTamilList.movies.length}`);
+        console.log(`✅ Success! Movies: ${dailyTamilList.movies.length}, Series: ${dailyTamilList.series.length}`);
     } catch (e) {
-        console.error("❌ Scan failed:", e.message);
+        console.error("❌ Auto-update failed:", e.message);
     }
 }
 
@@ -45,26 +51,25 @@ function formatTMDB(item) {
         name: item.title || item.name,
         type: item.title ? "movie" : "series",
         poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
-        description: `Release: ${item.release_date || item.first_air_date}`
+        description: `📅 ${item.release_date || item.first_air_date} | ⭐ ${item.vote_average || 'N/A'}`
     };
 }
 
-// Initial update and schedule
 updateDailyList();
 setInterval(updateDailyList, 12 * 60 * 60 * 1000); 
 
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.daily.tamil",
-        version: "6.1.0",
-        name: "Daily Tamil OTT",
-        description: "Auto-refreshing Tamil Originals & Dubbed content.",
+        id: "com.anandh.tamil.ultimate",
+        version: "6.2.1",
+        name: "Tamil Cinema 2025+",
+        description: "Auto-updating Tamil originals and dubbed hits.",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: [
-            { id: "tamil_movies", type: "movie", name: "Tamil Movies (New & Dubbed)" },
-            { id: "tamil_series", type: "series", name: "Tamil Web Series" }
+            { id: "tamil_movies", type: "movie", name: "Tamil Movies (2025-Present)" },
+            { id: "tamil_series", type: "series", name: "Tamil Series (2025-Present)" }
         ]
     });
 });
@@ -72,9 +77,9 @@ app.get("/manifest.json", (req, res) => {
 app.get("/catalog/:type/:id.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     const list = req.params.type === "movie" ? dailyTamilList.movies : dailyTamilList.series;
-    res.json({ metas: list });
+    res.json({ metas: list || [] });
 });
 
-app.get("/", (req, res) => res.status(200).send("Daily Tamil Addon is Active"));
+app.get("/", (req, res) => res.status(200).send("Tamil Ultimate 6.2.1 is Online"));
 
-app.listen(PORT, () => console.log(`🚀 Addon running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 v6.2.1 active`));
