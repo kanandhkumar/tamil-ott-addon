@@ -11,37 +11,43 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 async function updateDailyList() {
     const today = new Date().toISOString().split('T')[0];
     const startDate = "2025-01-01";
-    console.log(`🌞 Refreshing Global Tamil Library (From ${startDate})...`);
+    console.log(`🌞 Refreshing Library: Newest to Oldest (From ${startDate})...`);
 
     try {
-        // Net 1: Original Tamil movies (Popularity sort)
-        const movieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc&region=IN`;
-        
-        // Net 2: Trending movies in India (Hollywood/Dubbed hits)
-        const dubbedUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&certification_country=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
+        // --- 1. FETCH DATA ---
+        // Movies: Original Tamil + Popular in India (Dubbed)
+        const movieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc&region=IN`;
+        const dubbedUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&certification_country=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
 
-        // Net 3: Tamil Web Series
-        const seriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
+        // Series: Original Tamil Web Series
+        const seriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
 
         const [resM, resD, resS] = await Promise.all([fetch(movieUrl), fetch(dubbedUrl), fetch(seriesUrl)]);
         const dataM = await resM.json();
         const dataD = await resD.json();
         const dataS = await resS.json();
 
-        // Combine and de-duplicate movies
+        // --- 2. MERGE & SORT BY DATE (Strict Newest First) ---
         const combinedMovies = [...(dataM.results || []), ...(dataD.results || [])];
-        const uniqueItems = Array.from(new Map(combinedMovies.map(m => [m.id, m])).values());
+        
+        // Remove duplicates and sort strictly by release date descending
+        const sortedMovies = Array.from(new Map(combinedMovies.map(m => [m.id, m])).values())
+            .sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
 
-        // Process IDs (Convert to IMDb for playback)
+        const sortedSeries = (dataS.results || [])
+            .sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
+
+        // --- 3. PROCESS WITH INCREASED LIMITS ---
+        // Movies: increased to 60, Series: increased to 50
         const movieResults = [];
-        for (const item of uniqueItems.slice(0, 80)) { // Increased limit to 80 for more variety
+        for (const item of sortedMovies.slice(0, 60)) {
             const playable = await convertToPlayable(item, 'movie');
             if (playable) movieResults.push(playable);
             await delay(40);
         }
 
         const seriesResults = [];
-        for (const item of (dataS.results || []).slice(0, 40)) {
+        for (const item of sortedSeries.slice(0, 50)) {
             const playable = await convertToPlayable(item, 'tv');
             if (playable) seriesResults.push(playable);
             await delay(40);
@@ -50,9 +56,9 @@ async function updateDailyList() {
         dailyTamilList.movies = movieResults;
         dailyTamilList.series = seriesResults;
         
-        console.log(`✅ Library Refreshed! Total Movies: ${dailyTamilList.movies.length}`);
+        console.log(`✅ Update Successful! Movies: ${dailyTamilList.movies.length}, Series: ${dailyTamilList.series.length}`);
     } catch (e) {
-        console.error("❌ Refresh failed:", e.message);
+        console.error("❌ Update failed:", e.message);
     }
 }
 
@@ -79,15 +85,15 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.tamil.global",
-        version: "6.4.0",
-        name: "Tamil Global 2025",
-        description: "Tamil Originals + Hollywood/Indian Dubbed Hits.",
+        id: "com.anandh.tamil.latest.final",
+        version: "6.5.0",
+        name: "Tamil Latest (2025-26)",
+        description: "Newest Tamil & Dubbed releases first.",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: [
-            { id: "tg_movies", type: "movie", name: "Tamil & Dubbed Hits (2025+)" },
-            { id: "tg_series", type: "series", name: "Tamil Web Series" }
+            { id: "tl_movies", type: "movie", name: "Latest Tamil & Dubbed (2025+)" },
+            { id: "tl_series", type: "series", name: "Latest Tamil Web Series" }
         ],
         idPrefixes: ["tt", "tmdb"]
     });
@@ -99,4 +105,4 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     res.json({ metas: list || [] });
 });
 
-app.listen(PORT, () => console.log("🚀 v6.4.0 Global Tamil Active"));
+app.listen(PORT, () => console.log("🚀 v6.5.0 Strict Latest Live"));
