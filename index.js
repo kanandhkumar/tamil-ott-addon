@@ -25,15 +25,15 @@ async function updateDailyList() {
     const startDate = "2025-01-01";
     const langFilter = "en|hi|te|ml|kn";
     
-    console.log(`🌞 Refreshing Smart-Filtered Catalog...`);
+    console.log(`🌞 Refreshing Catalog (Released Only)...`);
 
     try {
-        // 1. URLs - Using region=IN and popularity to ensure we catch dubbed content
-        const tMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&sort_by=primary_release_date.desc`;
-        const dMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=${langFilter}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&sort_by=popularity.desc`;
+        // ADDED: .lte=${today} to all URLs to block "In Production" movies
+        const tMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
+        const dMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=${langFilter}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
         
-        const tSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&sort_by=first_air_date.desc`;
-        const dSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=${langFilter}&first_air_date.gte=${startDate}&sort_by=popularity.desc`;
+        const tSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
+        const dSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=${langFilter}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
 
         const [rawTM, rawDM, rawTS, rawDS] = await Promise.all([
             fetchAllPages(tMovieUrl, 2), 
@@ -43,15 +43,14 @@ async function updateDailyList() {
         ]);
 
         // Process Pure Tamil Movies
-        const tM = [];
+        masterList.tMovies = [];
         for (const item of rawTM.slice(0, 50)) {
             const p = await convertToPlayable(item, 'movie');
-            if (p) tM.push(p);
+            if (p) masterList.tMovies.push(p);
             await delay(20);
         }
-        masterList.tMovies = tM;
 
-        // Process Dubbed Movies (Popular in India)
+        // Process Dubbed Movies (Sorted by Date)
         const dM = [];
         for (const item of rawDM.slice(0, 50)) {
             const p = await convertToPlayable(item, 'movie');
@@ -61,15 +60,14 @@ async function updateDailyList() {
         masterList.dMovies = dM.sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
 
         // Process Pure Tamil Series
-        const tS = [];
+        masterList.tSeries = [];
         for (const item of rawTS.slice(0, 50)) {
             const p = await convertToPlayable(item, 'tv');
-            if (p) tS.push(p);
+            if (p) masterList.tSeries.push(p);
             await delay(20);
         }
-        masterList.tSeries = tS;
 
-        // Process Dubbed Series (Popular in India)
+        // Process Dubbed Series
         const dS = [];
         for (const item of rawDS.slice(0, 50)) {
             const p = await convertToPlayable(item, 'tv');
@@ -78,7 +76,7 @@ async function updateDailyList() {
         }
         masterList.dSeries = dS.sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
 
-        console.log(`✅ Update Successful! TM:${masterList.tMovies.length} DM:${masterList.dMovies.length} TS:${masterList.tSeries.length} DS:${masterList.dSeries.length}`);
+        console.log(`✅ Update Successful! Released content only.`);
     } catch (e) { 
         console.error("Update failed", e); 
     }
@@ -106,9 +104,9 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
         id: "com.anandh.tamil.v7.final",
-        version: "7.1.0",
+        version: "7.1.5",
         name: "Tamil Pro Max 2025",
-        description: "Newest Tamil & Dubbed Hits (EN/HI/TE/ML/KN)",
+        description: "Strictly Released Tamil & Dubbed Content",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: [
@@ -132,4 +130,4 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     res.json({ metas: list || [] });
 });
 
-app.listen(PORT, () => console.log("🚀 v7.1.0 Ready"));
+app.listen(PORT, () => console.log("🚀 v7.1.5 Live"));
