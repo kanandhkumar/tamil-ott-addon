@@ -1,119 +1,80 @@
 const express = require("express");
 const fetch = require("node-fetch");
-const pLimitModule = require("p-limit"); 
-
 const app = express();
 
 const TMDB_KEY = process.env.TMDB_API_KEY;
-const WATCHMODE_KEY = process.env.WATCHMODE_KEY;
 const PORT = process.env.PORT || 10000;
 
-const CACHE_TTL_MS = 60 * 60 * 1000; 
-const CACHE_MAX_ITEMS = 1000;
-const MAX_CONCURRENCY = 1; // Extreme safety
-const FETCH_TIMEOUT = 8000; 
+let dailyTamilList = { movies: [], series: [] };
 
-const cache = new Map();
-const pLimit = pLimitModule.default || pLimitModule;
-
-async function fetchJson(url, label, retries = 1) {
-  for (let i = 0; i <= retries; i++) {
+async function updateDailyList() {
+    console.log("🌞 Starting daily Tamil content scan...");
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT) });
-      if (res.ok) return await res.json();
-      if (res.status === 500 || res.status === 429) {
-        if (i < retries) {
-            await new Promise(r => setTimeout(r, 2000));
-            continue;
-        }
-      }
-      return null;
+        // 1. Original Tamil Movies (Latest)
+        const urlOrig = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&sort_by=primary_release_date.desc&region=IN`;
+        
+        // 2. Dubbed/Popular in India (To find dubbed Hollywood/South hits)
+        const urlDubbed = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&certification_country=IN&sort_by=popularity.desc&with_runtime.gte=60`;
+
+        const [resO, resD, resS] = await Promise.all([
+            fetch(urlOrig),
+            fetch(urlDubbed),
+            fetch(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&sort_by=first_air_date.desc`)
+        ]);
+
+        const dataO = await resO.json();
+        const dataD = await resD.json();
+        const dataS = await resS.json();
+
+        // Combine and remove duplicates
+        const combinedMovies = [...(dataO.results || []), ...(dataD.results || [])];
+        const uniqueMovies = Array.from(new Map(combinedMovies.map(m => [m.id, m])).values());
+
+        dailyTamilList.movies = uniqueMovies.slice(0, 40).map(formatTMDB);
+        dailyTamilList.series = (dataS.results || []).slice(0, 20).map(formatTMDB);
+        
+        console.log(`✅ Scan Complete. Total unique items: ${dailyTamilList.movies.length}`);
     } catch (e) {
-      if (i === retries) return null;
+        console.error("❌ Scan failed:", e.message);
     }
-  }
 }
 
-async function checkStreamingStatus(imdbId, targetSourceId) {
-  const cacheKey = `avail:${imdbId}:${targetSourceId}`;
-  const cached = cache.get(cacheKey);
-  if (cached !== undefined) return cached.value;
-
-  const url = `https://api.watchmode.com/v1/title/${imdbId}/sources/?apiKey=${WATCHMODE_KEY}&regions=IN`;
-  const data = await fetchJson(url, `WM ${imdbId}`);
-  
-  // If Watchmode fails (null), we assume TRUE to avoid hiding content during API outages
-  const isOnPlatform = data === null ? true : data.some(s => s.source_id === targetSourceId);
-  
-  cache.set(cacheKey, { value: isOnPlatform, expiresAt: Date.now() + CACHE_TTL_MS });
-  return isOnPlatform;
+function formatTMDB(item) {
+    return {
+        id: `tmdb:${item.id}`,
+        name: item.title || item.name,
+        type: item.title ? "movie" : "series",
+        poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
+        description: `Release: ${item.release_date || item.first_air_date}`
+    };
 }
 
-async function getTrendingTamil(type) {
-  const tmdbType = type === "movie" ? "movie" : "tv";
-  const url = `https://api.themoviedb.org/3/discover/${tmdbType}?api_key=${TMDB_KEY}&with_original_language=ta&sort_by=popularity.desc&region=IN`;
-  const data = await fetchJson(url, "TMDB");
-  if (!data || !data.results) return [];
-
-  const limit = pLimit(MAX_CONCURRENCY);
-  return Promise.all(
-    data.results.slice(0, 15).map(item =>
-      limit(async () => {
-        const idsUrl = `https://api.themoviedb.org/3/${tmdbType}/${item.id}/external_ids?api_key=${TMDB_KEY}`;
-        const idsData = await fetchJson(idsUrl, "IDs");
-        if (!idsData || !idsData.imdb_id) return null;
-        return {
-          id: idsData.imdb_id,
-          type,
-          name: item.title || item.name,
-          poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : undefined,
-          description: item.overview || ""
-        };
-      })
-    )
-  ).then(results => results.filter(Boolean));
-}
+// Initial update and schedule
+updateDailyList();
+setInterval(updateDailyList, 12 * 60 * 60 * 1000); 
 
 app.get("/manifest.json", (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.json({
-    id: "com.kanandhkumar.tamilott",
-    version: "5.1.0",
-    name: "Tamil OTT Survivor",
-    description: "Tamil catalogs with API fail-safe protection.",
-    resources: ["catalog"],
-    types: ["movie", "series"],
-    catalogs: [
-      { id: "netflix_tamil", type: "movie", name: "Netflix - Tamil" },
-      { id: "prime_tamil", type: "movie", name: "Prime - Tamil" },
-      { id: "sunnxt_movies", type: "movie", name: "SunNXT - Movies" },
-      { id: "zee5_movies", type: "movie", name: "ZEE5 - Tamil" },
-      { id: "sonyliv_movies", type: "movie", name: "SonyLIV - Tamil" },
-      { id: "jiohotstar_movies", type: "movie", name: "JioHotstar - Tamil" }
-    ]
-  });
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.json({
+        id: "com.anandh.daily.tamil",
+        version: "6.1.0",
+        name: "Daily Tamil OTT",
+        description: "Auto-refreshing Tamil Originals & Dubbed content.",
+        resources: ["catalog"],
+        types: ["movie", "series"],
+        catalogs: [
+            { id: "tamil_movies", type: "movie", name: "Tamil Movies (New & Dubbed)" },
+            { id: "tamil_series", type: "series", name: "Tamil Web Series" }
+        ]
+    });
 });
 
-app.get("/catalog/:type/:id.json", async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  const { type, id } = req.params;
-  const platform = id.split("_")[0];
-  const sourceMap = { netflix: 203, prime: 26, sunnxt: 433, zee5: 450, sonyliv: 459, jiohotstar: 447 };
-  const targetSourceId = sourceMap[platform];
-
-  const trending = await getTrendingTamil(type);
-  const limit = pLimit(MAX_CONCURRENCY);
-
-  const metas = await Promise.all(
-    trending.map(item =>
-      limit(async () => {
-        const isAvailable = await checkStreamingStatus(item.id, targetSourceId);
-        return isAvailable ? item : null;
-      })
-    )
-  );
-
-  res.json({ metas: metas.filter(Boolean) });
+app.get("/catalog/:type/:id.json", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    const list = req.params.type === "movie" ? dailyTamilList.movies : dailyTamilList.series;
+    res.json({ metas: list });
 });
 
-app.listen(PORT, () => console.log("Survivor Build Live"));
+app.get("/", (req, res) => res.status(200).send("Daily Tamil Addon is Active"));
+
+app.listen(PORT, () => console.log(`🚀 Addon running on port ${PORT}`));
