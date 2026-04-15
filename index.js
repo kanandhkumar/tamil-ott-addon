@@ -29,7 +29,7 @@ async function updateDailyList() {
     const startDate = "2025-01-01";
     const regionalLangs = "hi|te|ml|kn";
     
-    console.log(`🔄 Sync Started: ${today} | Standard Order for Indian / Popularity for English...`);
+    console.log(`🔄 Popularity Sync: ${today} | Prioritizing Hollywood Blockbusters...`);
 
     try {
         // 1. PURE TAMIL (Strict New-to-Old)
@@ -40,8 +40,8 @@ async function updateDailyList() {
         const indMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=${regionalLangs}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
         const indSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&with_original_language=${regionalLangs}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
 
-        // 3. ENGLISH HITS (Switched to POPULARITY DESCENDING)
-        // This ensures blockbusters like Deadpool, Joker 2, etc., stay at the front
+        // 3. ENGLISH HITS (Sorted by POPULARITY DESCENDING)
+        // Using region=IN ensures we only get Hollywood movies that were relevant/released in India
         const engMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
         const engSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
 
@@ -51,17 +51,18 @@ async function updateDailyList() {
             fetchAllPages(engMovieUrl, 3), fetchAllPages(engSeriesUrl, 3)
         ]);
 
-        // PROCESS INDIAN CONTENT: Preserve strict Date Sorting
-        masterList.tMovies = (await processItems(rawTM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
-        masterList.tSeries = (await processItems(rawTS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
+        // Process Tamil & Indian Rows (Newest First)
+        masterList.tMovies = await processItems(rawTM.slice(0, 50), 'movie');
+        masterList.tSeries = await processItems(rawTS.slice(0, 50), 'tv');
         masterList.dMovies = (await processItems(rawIndM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
         masterList.dSeries = (await processItems(rawIndS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
 
-        // PROCESS ENGLISH CONTENT: Keep TMDB Popularity Order (No secondary date sort)
+        // Process English Rows (Strict Popularity - No secondary date sorting)
+        // This keeps the big "hits" like Deadpool, Avatar, or Fallout at the very front
         masterList.eMovies = await processItems(rawEngM.slice(0, 50), 'movie');
         masterList.eSeries = await processItems(rawEngS.slice(0, 50), 'tv');
 
-        console.log(`✅ Update Successful! Hollywood Hits now prioritized by popularity.`);
+        console.log(`✅ Success! Hollywood hits are now sorted by popularity.`);
     } catch (e) { console.error("Sync failed", e); }
 }
 
@@ -101,9 +102,9 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
         id: "com.anandh.tamil.v7.pop",
-        version: "7.3.4",
+        version: "7.3.3",
         name: "Tamil Pro Max 2025",
-        description: "6 Rows - Popularity-Sorted Hollywood",
+        description: "Pure Tamil (Newest) + Hollywood (Biggest Hits)",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: [
@@ -131,4 +132,4 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     res.json({ metas: list || [] });
 });
 
-app.listen(PORT, () => console.log("🚀 v7.3.4 Popularity Mode Live"));
+app.listen(PORT, () => console.log("🚀 v7.3.3 Popularity Mode Live"));
