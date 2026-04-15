@@ -29,21 +29,21 @@ async function updateDailyList() {
     const startDate = "2025-01-01";
     const regionalLangs = "hi|te|ml|kn";
     
-    console.log(`🔄 Refined Sync: ${today} | Filtering for Tamil Dubbed Hollywood...`);
+    console.log(`🔄 Sync Started: ${today} | Standard Order for Indian / Popularity for English...`);
 
     try {
-        // 1. PURE TAMIL 
+        // 1. PURE TAMIL (Strict New-to-Old)
         const tMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
         const tSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
         
-        // 2. INDIAN REGIONAL DUBBED (Hindi, Telugu, etc.)
+        // 2. INDIAN REGIONAL DUBBED (Strict New-to-Old)
         const indMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=${regionalLangs}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
         const indSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&with_original_language=${regionalLangs}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
 
-        // 3. ENGLISH REFINED (Hollywood with Tamil audio/translation)
-        // Added 'with_spoken_languages=ta' to ensure they have Tamil tracks
-        const engMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&with_spoken_languages=ta&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
-        const engSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&with_spoken_languages=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
+        // 3. ENGLISH HITS (Switched to POPULARITY DESCENDING)
+        // This ensures blockbusters like Deadpool, Joker 2, etc., stay at the front
+        const engMovieUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
+        const engSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
 
         const [rawTM, rawTS, rawIndM, rawIndS, rawEngM, rawEngS] = await Promise.all([
             fetchAllPages(tMovieUrl), fetchAllPages(tSeriesUrl), 
@@ -51,17 +51,17 @@ async function updateDailyList() {
             fetchAllPages(engMovieUrl, 3), fetchAllPages(engSeriesUrl, 3)
         ]);
 
-        // Process and strictly sort
+        // PROCESS INDIAN CONTENT: Preserve strict Date Sorting
         masterList.tMovies = (await processItems(rawTM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
         masterList.tSeries = (await processItems(rawTS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
-        
         masterList.dMovies = (await processItems(rawIndM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
         masterList.dSeries = (await processItems(rawIndS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
 
-        masterList.eMovies = (await processItems(rawEngM.slice(0, 50), 'movie')).sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
-        masterList.eSeries = (await processItems(rawEngS.slice(0, 50), 'tv')).sort((a, b) => new Date(b.first_air_date) - new Date(a.first_air_date));
+        // PROCESS ENGLISH CONTENT: Keep TMDB Popularity Order (No secondary date sort)
+        masterList.eMovies = await processItems(rawEngM.slice(0, 50), 'movie');
+        masterList.eSeries = await processItems(rawEngS.slice(0, 50), 'tv');
 
-        console.log(`✅ Success! Hollywood rows now filtered for Tamil audio.`);
+        console.log(`✅ Update Successful! Hollywood Hits now prioritized by popularity.`);
     } catch (e) { console.error("Sync failed", e); }
 }
 
@@ -80,9 +80,7 @@ async function convertToPlayable(item, type) {
         const idUrl = `https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`;
         const res = await fetch(idUrl);
         const ids = await res.json();
-        
         const date = type === 'movie' ? item.release_date : item.first_air_date;
-        if (!date) return null; // Skip items with no release date
 
         return {
             id: ids.imdb_id || `tmdb:${item.id}`,
@@ -91,7 +89,7 @@ async function convertToPlayable(item, type) {
             poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
             release_date: date,
             first_air_date: date,
-            description: `📅 ${date} | ⭐ ${item.vote_average || 'N/A'}`
+            description: `📅 ${date || 'N/A'} | ⭐ ${item.vote_average || 'N/A'}`
         };
     } catch (e) { return null; }
 }
@@ -102,10 +100,10 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.tamil.v7.refined",
-        version: "7.3.2",
+        id: "com.anandh.tamil.v7.pop",
+        version: "7.3.4",
         name: "Tamil Pro Max 2025",
-        description: "Organized Rows - Hollywood with Tamil Audio",
+        description: "6 Rows - Popularity-Sorted Hollywood",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: [
@@ -113,8 +111,8 @@ app.get("/manifest.json", (req, res) => {
             { id: "pure_tamil_s", type: "series", name: "New Tamil Series (Pure)" },
             { id: "ind_dub_m", type: "movie", name: "New Indian Dubbed Movies" },
             { id: "ind_dub_s", type: "series", name: "New Indian Dubbed Series" },
-            { id: "eng_dub_m", type: "movie", name: "Hollywood (Tamil Dubbed)" },
-            { id: "eng_dub_s", type: "series", name: "Hollywood Series (Tamil Dubbed)" }
+            { id: "eng_dub_m", type: "movie", name: "Hollywood Hits (Tamil Dub)" },
+            { id: "eng_dub_s", type: "series", name: "Hollywood Series (Tamil Dub)" }
         ],
         idPrefixes: ["tt", "tmdb"]
     });
@@ -133,4 +131,4 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     res.json({ metas: list || [] });
 });
 
-app.listen(PORT, () => console.log("🚀 v7.3.2 Refined Server Live"));
+app.listen(PORT, () => console.log("🚀 v7.3.4 Popularity Mode Live"));
