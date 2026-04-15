@@ -1,13 +1,18 @@
 {
-  "name": "tamil-ott-catalog",
-  "version": "1.0.0",
+  "name": "daily-tamil-ott",
+  "version": "6.1.0",
+  "description": "Daily automated scan for Tamil original and dubbed content.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "node-fetch": "^2.7.0",
-    "p-limit": "^7.3.0"
-  }
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Anandh",
+  "license": "MIT"
 }
