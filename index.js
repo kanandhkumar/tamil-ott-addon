@@ -10,6 +10,7 @@ const RAPIDAPI_HOST = "streaming-availability.p.rapidapi.com";
 const COUNTRY = "in";
 const START_DATE = "2025-01-01";
 const REFRESH_MS = 12 * 60 * 60 * 1000;
+const LANGUAGE_BUCKETS = ["ta", "te", "ml", "kn", "hi", "en"];
 
 let masterList = {
   tamilAudioMovies: [],
@@ -41,9 +42,19 @@ async function fetchAllPages(url, pages = 2) {
     if (data && Array.isArray(data.results)) {
       results = results.concat(data.results);
     }
-    await delay(150);
+    await delay(120);
   }
   return results;
+}
+
+function dedupeById(items) {
+  const map = new Map();
+  for (const item of items) {
+    if (item && item.id && !map.has(item.id)) {
+      map.set(item.id, item);
+    }
+  }
+  return [...map.values()];
 }
 
 async function getImdbIdFromTmdb(itemId, type) {
@@ -129,7 +140,17 @@ async function convertToPlayable(item, type) {
   };
 }
 
-async function processTamilAudioItems(items, type, limit = 30) {
+async function processPlainItems(items, type, limit = 30) {
+  const out = [];
+  for (const item of items.slice(0, limit)) {
+    const playable = await convertToPlayable(item, type);
+    if (playable) out.push(playable);
+    await delay(70);
+  }
+  return out;
+}
+
+async function processTamilAudioItems(items, type, limit = 40) {
   const out = [];
 
   for (const item of items) {
@@ -138,19 +159,19 @@ async function processTamilAudioItems(items, type, limit = 30) {
     try {
       const imdbId = await getImdbIdFromTmdb(item.id, type);
       if (!imdbId) {
-        await delay(120);
+        await delay(100);
         continue;
       }
 
       const streamData = await getStreamingAvailabilityById(imdbId);
-      const hasTamil = hasTamilAudioInResponse(streamData);
-
-      if (!hasTamil) {
-        await delay(120);
+      if (!hasTamilAudioInResponse(streamData)) {
+        await delay(100);
         continue;
       }
 
-      const playable = {
+      const date = type === "movie" ? item.release_date : item.first_air_date;
+
+      out.push({
         id: imdbId,
         name: item.title || item.name || "",
         type: type === "movie" ? "movie" : "series",
@@ -160,70 +181,68 @@ async function processTamilAudioItems(items, type, limit = 30) {
         background: item.backdrop_path
           ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
           : undefined,
-        release_date: type === "movie" ? item.release_date : item.first_air_date,
-        first_air_date: type === "movie" ? item.release_date : item.first_air_date,
-        description: `Tamil audio available in ${COUNTRY.toUpperCase()} | 📅 ${type === "movie" ? item.release_date || "N/A" : item.first_air_date || "N/A"} | ⭐ ${item.vote_average || "N/A"}`
-      };
-
-      out.push(playable);
+        release_date: date,
+        first_air_date: date,
+        description: `Tamil audio in IN | ${item.original_language?.toUpperCase() || "NA"} | 📅 ${date || "N/A"} | ⭐ ${item.vote_average || "N/A"}`
+      });
     } catch (e) {
       console.error("Tamil audio process error:", e.message);
     }
 
-    await delay(180);
+    await delay(160);
   }
 
   return out;
 }
 
-async function processPlainItems(items, type, limit = 30) {
-  const out = [];
-  for (const item of items.slice(0, limit)) {
-    const playable = await convertToPlayable(item, type);
-    if (playable) out.push(playable);
-    await delay(80);
+async function fetchLanguageBuckets(type, languages, pages = 2) {
+  const all = [];
+
+  for (const lang of languages) {
+    const endpoint = type === "movie" ? "movie" : "tv";
+    const dateFieldGte = type === "movie" ? "primary_release_date.gte" : "first_air_date.gte";
+    const dateFieldLte = type === "movie" ? "primary_release_date.lte" : "first_air_date.lte";
+    const sortField = type === "movie" ? "primary_release_date.desc" : "first_air_date.desc";
+    const regionPart = type === "movie" ? `&region=IN` : ``;
+
+    const url =
+      `https://api.themoviedb.org/3/discover/${endpoint}?api_key=${TMDB_KEY}` +
+      `&with_original_language=${lang}` +
+      `${regionPart}` +
+      `&${dateFieldGte}=${START_DATE}` +
+      `&${dateFieldLte}=${new Date().toISOString().split("T")[0]}` +
+      `&sort_by=${sortField}`;
+
+    const results = await fetchAllPages(url, pages);
+    all.push(...results);
   }
-  return out;
+
+  return dedupeById(all);
 }
 
 async function updateDailyList() {
-  const today = new Date().toISOString().split("T")[0];
-
-  console.log(`🔄 Sync started for ${today}`);
+  console.log(`🔄 Sync started`);
 
   try {
     const pureTamilMovieUrl =
       `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}` +
       `&with_original_language=ta&region=IN` +
       `&primary_release_date.gte=${START_DATE}` +
-      `&primary_release_date.lte=${today}` +
+      `&primary_release_date.lte=${new Date().toISOString().split("T")[0]}` +
       `&sort_by=primary_release_date.desc`;
 
     const pureTamilSeriesUrl =
       `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}` +
       `&with_original_language=ta` +
       `&first_air_date.gte=${START_DATE}` +
-      `&first_air_date.lte=${today}` +
+      `&first_air_date.lte=${new Date().toISOString().split("T")[0]}` +
       `&sort_by=first_air_date.desc`;
 
-    const broadMovieUrl =
-      `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}` +
-      `&region=IN` +
-      `&primary_release_date.gte=${START_DATE}` +
-      `&primary_release_date.lte=${today}` +
-      `&sort_by=popularity.desc`;
-
-    const broadSeriesUrl =
-      `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}` +
-      `&first_air_date.gte=${START_DATE}` +
-      `&first_air_date.lte=${today}` +
-      `&sort_by=popularity.desc`;
-
-    const [rawTamilMovies, rawTamilSeries, rawBroadMovies, rawBroadSeries] = await Promise.all([
+    const [rawTamilMovies, rawTamilSeries, rawMultiLangMovies, rawMultiLangSeries] = await Promise.all([
       fetchAllPages(pureTamilMovieUrl, 2),
       fetchAllPages(pureTamilSeriesUrl, 2),
-      fetchAllPages(broadMovieUrl, 3),
-      fetchAllPages(broadSeriesUrl, 3)
+      fetchLanguageBuckets("movie", LANGUAGE_BUCKETS, 2),
+      fetchLanguageBuckets("tv", LANGUAGE_BUCKETS, 2)
     ]);
 
     masterList.pureTamilMovies = (await processPlainItems(rawTamilMovies, "movie", 30))
@@ -232,14 +251,14 @@ async function updateDailyList() {
     masterList.pureTamilSeries = (await processPlainItems(rawTamilSeries, "tv", 30))
       .sort((a, b) => new Date(b.first_air_date || 0) - new Date(a.first_air_date || 0));
 
-    masterList.tamilAudioMovies = await processTamilAudioItems(rawBroadMovies, "movie", 30);
-    masterList.tamilAudioSeries = await processTamilAudioItems(rawBroadSeries, "tv", 30);
+    masterList.tamilAudioMovies = await processTamilAudioItems(rawMultiLangMovies, "movie", 40);
+    masterList.tamilAudioSeries = await processTamilAudioItems(rawMultiLangSeries, "tv", 40);
 
     console.log(
-      `✅ Sync complete | Pure Tamil Movies: ${masterList.pureTamilMovies.length}, ` +
-      `Pure Tamil Series: ${masterList.pureTamilSeries.length}, ` +
-      `Tamil Audio Movies: ${masterList.tamilAudioMovies.length}, ` +
-      `Tamil Audio Series: ${masterList.tamilAudioSeries.length}`
+      `✅ Done | pureTamilMovies=${masterList.pureTamilMovies.length} ` +
+      `pureTamilSeries=${masterList.pureTamilSeries.length} ` +
+      `tamilAudioMovies=${masterList.tamilAudioMovies.length} ` +
+      `tamilAudioSeries=${masterList.tamilAudioSeries.length}`
     );
   } catch (e) {
     console.error("Sync failed:", e.message);
@@ -257,9 +276,9 @@ app.get("/manifest.json", (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.json({
     id: "com.anandh.tamil.audio",
-    version: "8.0.0",
+    version: "8.1.0",
     name: "Tamil OTT Audio",
-    description: "Pure Tamil plus titles with Tamil audio in India",
+    description: "Pure Tamil plus Indian and English titles with Tamil audio in India",
     resources: ["catalog"],
     types: ["movie", "series"],
     catalogs: [
