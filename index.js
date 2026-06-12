@@ -104,14 +104,16 @@ async function convertToPlayable(item, type, isCinema = false) {
             name:        item.title || item.name,
             type:        type === 'movie' ? 'movie' : 'series',
             poster:      item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
-            releaseInfo: year,
-            // 1. ADDED STRICT ISO TIMESTAMP (Stremio UI uses this to validate 'In Cinema' eligibility)
+            
+            // NUVIO FIX: Force the text into the releaseInfo field so Nuvio renders it
+            releaseInfo: isCinema ? `${year} • 🎬 In Cinemas` : year,
+            
             released:    date ? new Date(date).toISOString() : undefined,
             imdbRating:  item.vote_average && item.vote_average > 0 ? item.vote_average.toFixed(1) : undefined,
             description: item.overview || `📅 Release Date: ${date || 'N/A'}`,
         };
 
-        // 2. FLAG TO TRIGGER STREMIO TICKET BANNER
+        // STREMIO FIX: Keep the flag so official Stremio apps show the graphic banner
         if (isCinema) {
             metaObj.inTheaters = true; 
         }
@@ -125,11 +127,10 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    // 3. ADDED CACHE HEADERS
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     res.json({
         id: "com.anandh.tamil.v7.pop",
-        version: "7.4.3", // Bumped version to force Stremio to sync!
+        version: "7.4.4", // Version bumped to 7.4.4
         name: "Tamil Pro Max 2025",
         description: "7 Rows - Cinema, Tamil, Dubbed & Hollywood",
         resources: ["catalog"],
@@ -149,7 +150,6 @@ app.get("/manifest.json", (req, res) => {
 
 app.get("/catalog/:type/:id.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    // 3. ADDED CACHE HEADERS (Crucial for posters to update)
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     
     const cid  = req.params.id;
@@ -168,10 +168,10 @@ app.get("/catalog/:type/:id.json", (req, res) => {
 });
 
 app.get("/health", (req, res) => res.json({
-    status: "ok", version: "7.4.3",
+    status: "ok", version: "7.4.4",
     cinema:  masterList.cinema.length,
     tMovies: masterList.tMovies.length,
     tSeries: masterList.tSeries.length,
 }));
 
-app.listen(PORT, () => console.log("🚀 Tamil Pro Max 7.4.3 Live"));
+app.listen(PORT, () => console.log("🚀 Tamil Pro Max 7.4.4 Live"));
