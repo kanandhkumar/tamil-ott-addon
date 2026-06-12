@@ -30,7 +30,6 @@ async function updateDailyList() {
     const startDate = "2025-01-01";
     const regionalLangs = "hi|te|ml|kn";
 
-    // Cinema date range: released in last 60 days
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     console.log(`🔄 Sync Started: ${today}`);
@@ -42,9 +41,6 @@ async function updateDailyList() {
         const indSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&with_original_language=${regionalLangs}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
         const engMovieUrl  = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
         const engSeriesUrl = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
-
-        // Cinema: Tamil + Indian films released in last 60 days sorted by popularity
-        // Uses release_type=3 (Theatrical) to get cinema releases
         const cinemaUrl    = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta|hi|te|ml|kn&region=IN&with_release_type=3&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
 
         const [rawTM, rawTS, rawIndM, rawIndS, rawEngM, rawEngS, rawCinema] = await Promise.all([
@@ -64,40 +60,45 @@ async function updateDailyList() {
         masterList.eMovies = await processItems(rawEngM.slice(0, 50), 'movie');
         masterList.eSeries = await processItems(rawEngS.slice(0, 50), 'tv');
 
-        // Cinema: only items with poster, sorted by release date desc
         const cinemaItems = rawCinema
             .filter(m => m.poster_path)
             .sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
-        masterList.cinema = await processItems(cinemaItems.slice(0, 40), 'movie');
+        
+        // Pass true for isCinema flag to handle custom formatting
+        masterList.cinema = await processItems(cinemaItems.slice(0, 40), 'movie', true);
 
         console.log(`✅ Done! Cinema: ${masterList.cinema.length}, Tamil: ${masterList.tMovies.length}`);
     } catch (e) { console.error("Sync failed", e); }
 }
 
-async function processItems(items, type) {
+async function processItems(items, type, isCinema = false) {
     const list = [];
     for (const item of items) {
-        const p = await convertToPlayable(item, type);
+        const p = await convertToPlayable(item, type, isCinema);
         if (p) list.push(p);
         await delay(20);
     }
     return list;
 }
 
-async function convertToPlayable(item, type) {
+async function convertToPlayable(item, type, isCinema = false) {
     try {
         const idUrl = `https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`;
         const res = await fetch(idUrl);
         const ids = await res.json();
         const date = type === 'movie' ? item.release_date : item.first_air_date;
+        const year = date ? date.slice(0, 4) : '';
 
         return {
             id:          ids.imdb_id || `tmdb:${item.id}`,
             name:        item.title || item.name,
             type:        type === 'movie' ? 'movie' : 'series',
             poster:      item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
-            releaseInfo: date ? date.slice(0, 4) : undefined,
-            description: `📅 ${date || 'N/A'} | ⭐ ${item.vote_average || 'N/A'}`,
+            // 1. Shows custom cinema label if item belongs to the cinema catalog
+            releaseInfo: isCinema ? `${year} 🎬 In Cinemas` : year, 
+            // 2. Maps vote_average directly to imdbRating so Stremio renders the yellow rating badge
+            imdbRating:  item.vote_average && item.vote_average > 0 ? item.vote_average.toFixed(1) : undefined,
+            description: item.overview || `📅 Release Date: ${date || 'N/A'}`,
         };
     } catch (e) { return null; }
 }
