@@ -100,19 +100,23 @@ async function convertToPlayable(item, type, isCinema = false) {
         const year = date ? date.slice(0, 4) : '';
         const baseName = item.title || item.name;
 
+        // 🖼️ NEW POSTER SELECTION: Use custom CDN if IMDb ID exists, fallback to standard TMDB path
+        let posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null;
+        if (ids.imdb_id) {
+            posterUrl = `https://btttr.cc/poster-q/imdb/poster-default/${ids.imdb_id}.jpg`;
+        }
+
         const metaObj = {
             id:          ids.imdb_id || `tmdb:${item.id}`,
-            // 🎬 THE BULLETPROOF NUVIO FIX: Append "[IN CINEMAS]" directly to the title
             name:        isCinema ? `${baseName} 🎬 [IN CINEMA]` : baseName,
             type:        type === 'movie' ? 'movie' : 'series',
-            poster:      item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
+            poster:      posterUrl,
             releaseInfo: year,
             released:    date ? new Date(date).toISOString() : undefined,
             imdbRating:  item.vote_average && item.vote_average > 0 ? item.vote_average.toFixed(1) : undefined,
             description: item.overview || `📅 Release Date: ${date || 'N/A'}`,
         };
 
-        // We keep the Stremio flag too so official Stremio apps still get the nice graphic banner!
         if (isCinema) {
             metaObj.inTheaters = true; 
         }
@@ -128,9 +132,9 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     res.json({
-        id: "com.anandh.tamil.v7.pop",
-        version: "7.4.5", // Version bumped to 7.4.5
-        name: "Tamil Pro Max 2025",
+        id: "com.anandh.tamil.v8.cinema", 
+        version: "8.1.0", // Version bumped to 8.1.0
+        name: "Tamil Pro Max 2025 (v8)", 
         description: "7 Rows - Cinema, Tamil, Dubbed & Hollywood",
         resources: ["catalog"],
         types: ["movie", "series"],
@@ -167,10 +171,10 @@ app.get("/catalog/:type/:id.json", (req, res) => {
 });
 
 app.get("/health", (req, res) => res.json({
-    status: "ok", version: "7.4.5",
+    status: "ok", version: "8.1.0",
     cinema:  masterList.cinema.length,
     tMovies: masterList.tMovies.length,
     tSeries: masterList.tSeries.length,
 }));
 
-app.listen(PORT, () => console.log("🚀 Tamil Pro Max 7.4.5 Live"));
+app.listen(PORT, () => console.log("🚀 Tamil Pro Max 8.1.0 Live"));
