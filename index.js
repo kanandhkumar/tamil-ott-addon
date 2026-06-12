@@ -64,7 +64,7 @@ async function updateDailyList() {
             .filter(m => m.poster_path)
             .sort((a, b) => new Date(b.release_date) - new Date(a.release_date));
         
-        // Pass true for isCinema flag to handle custom formatting
+        // Pass true for the isCinema flag specifically for the cinema row
         masterList.cinema = await processItems(cinemaItems.slice(0, 40), 'movie', true);
 
         console.log(`✅ Done! Cinema: ${masterList.cinema.length}, Tamil: ${masterList.tMovies.length}`);
@@ -89,17 +89,23 @@ async function convertToPlayable(item, type, isCinema = false) {
         const date = type === 'movie' ? item.release_date : item.first_air_date;
         const year = date ? date.slice(0, 4) : '';
 
-        return {
+        // Build the base meta object
+        const metaObj = {
             id:          ids.imdb_id || `tmdb:${item.id}`,
             name:        item.title || item.name,
             type:        type === 'movie' ? 'movie' : 'series',
             poster:      item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
-            // 1. Shows custom cinema label if item belongs to the cinema catalog
-            releaseInfo: isCinema ? `${year} 🎬 In Cinemas` : year, 
-            // 2. Maps vote_average directly to imdbRating so Stremio renders the yellow rating badge
+            releaseInfo: year, // Keep releaseInfo clean as the banner will handle the "In Cinema" text visually
             imdbRating:  item.vote_average && item.vote_average > 0 ? item.vote_average.toFixed(1) : undefined,
             description: item.overview || `📅 Release Date: ${date || 'N/A'}`,
         };
+
+        // 🎬 If this item belongs to the cinema catalog, append the inTheaters flag
+        if (isCinema) {
+            metaObj.inTheaters = true; 
+        }
+
+        return metaObj;
     } catch (e) { return null; }
 }
 
