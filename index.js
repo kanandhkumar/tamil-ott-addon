@@ -7,13 +7,10 @@ const PORT = process.env.PORT || 10000;
 const REGION = "IN";
 const LANGUAGE_FILTER = "ta"; // Tamil
 
-// Comprehensive target array including new premium digital channels
 const TARGET_PROVIDERS = [
   { key: "jiohotstar", matchNames: ["jiohotstar", "disney+ hotstar", "hotstar"], searchUrl: (q) => `https://www.hotstar.com/in/search?q=${encodeURIComponent(q)}` },
   { key: "zee5", matchNames: ["zee5"], searchUrl: (q) => `https://www.zee5.com/search?q=${encodeURIComponent(q)}` },
   { key: "sunnxt", matchNames: ["sun nxt", "sunnxt"], searchUrl: (q) => `https://www.sunnxt.com/search/${encodeURIComponent(q)}` },
-  
-  // New Platforms Integration Matrix
   { key: "netflix", matchNames: ["netflix"], searchUrl: (q) => `https://www.netflix.com/search?q=${encodeURIComponent(q)}` },
   { key: "primevideo", matchNames: ["amazon prime video", "amazon prime", "prime video"], searchUrl: (q) => `https://www.primevideo.com/search/ref=atv_sr_sug?phrase=${encodeURIComponent(q)}` },
   { key: "sonyliv", matchNames: ["sony liv", "sonyliv"], searchUrl: (q) => `https://www.sonyliv.com/search?q=${encodeURIComponent(q)}` },
@@ -22,19 +19,8 @@ const TARGET_PROVIDERS = [
 
 let providerIdCache = null; 
 let masterList = { 
-    cinema: [],
-    tMovies: [], tSeries: [], 
-    dMovies: [], dSeries: [], 
-    eMovies: [], eSeries: [],
-    
-    // Custom internal ecosystem platform layout rows
-    jiohotstarOTT: [],
-    zee5OTT: [],
-    sunnxtOTT: [],
-    netflixOTT: [],
-    primevideoOTT: [],
-    sonylivOTT: [],
-    ahaOTT: []
+    cinema: [], tMovies: [], tSeries: [], dMovies: [], dSeries: [], eMovies: [], eSeries: [],
+    jiohotstarOTT: [], zee5OTT: [], sunnxtOTT: [], netflixOTT: [], primevideoOTT: [], sonylivOTT: [], ahaOTT: []
 };
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -54,13 +40,11 @@ async function fetchAllPages(url, pages = 2) {
 async function fetchMultiLang(baseUrl, langs, pages = 2) {
     const promises = langs.map(lang => fetchAllPages(`${baseUrl}&with_original_language=${lang}`, pages));
     const resultsArrays = await Promise.all(promises);
-    const combined = resultsArrays.flat();
-    return Array.from(new Map(combined.map(item => [item.id, item])).values());
+    return Array.from(new Map(resultsArrays.flat().map(item => [item.id, item])).values());
 }
 
 function matchProvider(providerName, target) {
-  const n = providerName.toLowerCase();
-  return target.matchNames.some((m) => n.includes(m));
+  return target.matchNames.some((m) => providerName.toLowerCase().includes(m));
 }
 
 async function resolveProviderIds() {
@@ -73,9 +57,7 @@ async function resolveProviderIds() {
         const found = (data || []).find((p) => matchProvider(p.provider_name, target));
         if (found) result[mediaType][target.key] = found.provider_id;
       }
-    } catch (err) {
-      console.error(`Failed resolving providers for ${mediaType}:`, err.message);
-    }
+    } catch (err) { console.error(`Error resolving providers:`, err.message); }
   }
   providerIdCache = result;
   return result;
@@ -85,12 +67,10 @@ async function updateDailyList() {
     const today = new Date().toISOString().split('T')[0];
     const startDate = "2025-01-01";
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
     const regionalLangs = ["hi", "te", "ml", "kn"];
     const cinemaLangs = ["ta", "hi", "te", "ml", "kn"];
 
     console.log(`🔄 Sync Started: ${today}`);
-
     try {
         const ids = await resolveProviderIds();
 
@@ -102,13 +82,15 @@ async function updateDailyList() {
         const engSeriesBase= `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
         const cinemaBase   = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=3&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}`;
 
-        const rawTM = await fetchAllPages(`${tMovieBase}&with_original_language=ta`, 2);
-        const rawTS = await fetchAllPages(`${tSeriesBase}&with_original_language=ta`, 2);
-        const rawEngM = await fetchAllPages(`${engMovieBase}&with_original_language=en`, 3);
-        const rawEngS = await fetchAllPages(`${engSeriesBase}&with_original_language=en`, 3);
-        const rawIndM = await fetchMultiLang(indMovieBase, regionalLangs, 2);
-        const rawIndS = await fetchMultiLang(indSeriesBase, regionalLangs, 2);
-        const rawCinema = await fetchMultiLang(cinemaBase, cinemaLangs, 2);
+        const [rawTM, rawTS, rawEngM, rawEngS, rawIndM, rawIndS, rawCinema] = await Promise.all([
+            fetchAllPages(`${tMovieBase}&with_original_language=ta`, 2),
+            fetchAllPages(`${tSeriesBase}&with_original_language=ta`, 2),
+            fetchAllPages(`${engMovieBase}&with_original_language=en`, 3),
+            fetchAllPages(`${engSeriesBase}&with_original_language=en`, 3),
+            fetchMultiLang(indMovieBase, regionalLangs, 2),
+            fetchMultiLang(indSeriesBase, regionalLangs, 2),
+            fetchMultiLang(cinemaBase, cinemaLangs, 2)
+        ]);
 
         rawIndM.sort((a, b) => new Date(b.release_date || 0) - new Date(a.release_date || 0));
         rawIndS.sort((a, b) => new Date(b.first_air_date || 0) - new Date(a.first_air_date || 0));
@@ -123,7 +105,6 @@ async function updateDailyList() {
         const cinemaItems = rawCinema.filter(m => m.poster_path).sort((a, b) => new Date(b.release_date || 0) - new Date(a.release_date || 0));
         masterList.cinema = await processItems(cinemaItems.slice(0, 40), 'movie', true);
 
-        // Batch generation block loop for all 7 premium local OTT platforms
         for (const provider of TARGET_PROVIDERS) {
             const pMovId = ids.movie[provider.key];
             const pTvId = ids.tv[provider.key];
@@ -137,12 +118,10 @@ async function updateDailyList() {
                 const ottSeries = await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&watch_region=${REGION}&with_watch_providers=${pTvId}&with_original_language=${LANGUAGE_FILTER}&sort_by=popularity.desc`, 2);
                 combinedOtt = combinedOtt.concat(ottSeries.map(item => ({...item, media_type: 'tv'})));
             }
-            
             combinedOtt.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
             masterList[`${provider.key}OTT`] = await processItems(combinedOtt.slice(0, 45), 'mixed');
         }
-
-        console.log(`✅ Update Successful! ${new Date().toLocaleTimeString()}`);
+        console.log(`✅ Update Successful!`);
     } catch (e) { console.error("Sync failed", e); }
 }
 
@@ -182,9 +161,7 @@ async function convertToPlayable(item, type, isCinema = false) {
             imdbRating:  item.vote_average && item.vote_average > 0 ? item.vote_average.toFixed(1) : undefined,
             description: item.overview || `📅 Release Date: ${date || 'N/A'}`,
         };
-
         if (isCinema) metaObj.inTheaters = true; 
-
         return metaObj;
     } catch (e) { return null; }
 }
@@ -197,7 +174,7 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     res.json({
         id: "com.anandh.tamil.v8.cinema", 
-        version: "8.8.0", 
+        version: "8.8.1", 
         name: "Tamil Pro Max Ultra (v8)", 
         description: "14 Rows - Ultimate Combined Cinema, Streaming Platforms & Television Index",
         resources: ["catalog", "stream"],
@@ -206,16 +183,13 @@ app.get("/manifest.json", (req, res) => {
             { id: "tamil_cinema",  type: "movie",  name: "🎬 Now In Cinemas",           extra: [{ name: "skip", isRequired: false }] },
             { id: "pure_tamil_m",  type: "movie",  name: "New Tamil Movies (Pure)",      extra: [{ name: "skip", isRequired: false }] },
             { id: "pure_tamil_s",  type: "series", name: "New Tamil Series (Pure)",      extra: [{ name: "skip", isRequired: false }] },
-            
-            // Comprehensive Digital OTT Platforms Index Track Rows (Marked as type: movie to handle layout uniformly)
-            { id: "ott_jiohotstar", type: "movie",  name: "📱 JioHotstar Tamil",  extra: [{ name: "skip", isRequired: false }] },
-            { id: "ott_zee5",       type: "movie",  name: "📱 ZEE5 Tamil",        extra: [{ name: "skip", isRequired: false }] },
-            { id: "ott_sunnxt",     type: "movie",  name: "📱 Sun NXT Tamil",     extra: [{ name: "skip", isRequired: false }] },
-            { id: "ott_netflix",    type: "movie",  name: "📱 Netflix India Tamil", extra: [{ name: "skip", isRequired: false }] },
-            { id: "ott_primevideo", type: "movie",  name: "📱 Prime Video India Tamil", extra: [{ name: "skip", isRequired: false }] },
-            { id: "ott_sonyliv",    type: "movie",  name: "📱 SonyLIV Tamil",     extra: [{ name: "skip", isRequired: false }] },
-            { id: "ott_aha",        type: "movie",  name: "📱 Aha Video Tamil",   extra: [{ name: "skip", isRequired: false }] },
-
+            { id: "ott_jiohotstar", type: "movie",  name: "📱 JioHotstar Tamil",         extra: [{ name: "skip", isRequired: false }] },
+            { id: "ott_zee5",       type: "movie",  name: "📱 ZEE5 Tamil",               extra: [{ name: "skip", isRequired: false }] },
+            { id: "ott_sunnxt",     type: "movie",  name: "📱 Sun NXT Tamil",            extra: [{ name: "skip", isRequired: false }] },
+            { id: "ott_netflix",    type: "movie",  name: "📱 Netflix India Tamil",      extra: [{ name: "skip", isRequired: false }] },
+            { id: "ott_primevideo", type: "movie",  name: "📱 Prime Video India Tamil",  extra: [{ name: "skip", isRequired: false }] },
+            { id: "ott_sonyliv",    type: "movie",  name: "📱 SonyLIV Tamil",            extra: [{ name: "skip", isRequired: false }] },
+            { id: "ott_aha",        type: "movie",  name: "📱 Aha Video Tamil",          extra: [{ name: "skip", isRequired: false }] },
             { id: "ind_dub_m",     type: "movie",  name: "New Indian Dubbed Movies",     extra: [{ name: "skip", isRequired: false }] },
             { id: "ind_dub_s",     type: "series", name: "New Indian Dubbed Series",     extra: [{ name: "skip", isRequired: false }] },
             { id: "eng_dub_m",     type: "movie",  name: "Hollywood Hits (Tamil Dub)",   extra: [{ name: "skip", isRequired: false }] },
@@ -225,20 +199,24 @@ app.get("/manifest.json", (req, res) => {
     });
 });
 
-app.get("/catalog/:type/:id.json", (req, res) => {
+// 🛠️ FIX: Handled Stremio's flexible path syntax variation for pagination options
+app.get("/catalog/:type/:id/:extra?.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
 
     const reqType = req.params.type;
     const cid  = req.params.id;
-    const skip = parseInt(req.query.skip || 0);
-    let list = [];
+    
+    // Parse skip value from path parameter fallback if standard query string is missing
+    let skip = parseInt(req.query.skip || 0);
+    if (req.params.extra && req.params.extra.startsWith("skip=")) {
+        skip = parseInt(req.params.extra.split("=")[1]) || 0;
+    }
 
+    let list = [];
     if (cid === "tamil_cinema")  list = masterList.cinema;
     if (cid === "pure_tamil_m")  list = masterList.tMovies;
     if (cid === "pure_tamil_s")  list = masterList.tSeries;
-    
-    // Dynamic routing evaluation flags
     if (cid === "ott_jiohotstar") list = masterList.jiohotstarOTT;
     if (cid === "ott_zee5")       list = masterList.zee5OTT;
     if (cid === "ott_sunnxt")     list = masterList.sunnxtOTT;
@@ -246,14 +224,14 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     if (cid === "ott_primevideo") list = masterList.primevideoOTT;
     if (cid === "ott_sonyliv")    list = masterList.sonylivOTT;
     if (cid === "ott_aha")        list = masterList.ahaOTT;
-
     if (cid === "ind_dub_m")     list = masterList.dMovies;
     if (cid === "ind_dub_s")     list = masterList.dSeries;
     if (cid === "eng_dub_m")     list = masterList.eMovies;
     if (cid === "eng_dub_s")     list = masterList.eSeries;
 
-    // Filter list to keep row content matched to the expected catalog type filter requested by Stremio
-    const filteredList = list.filter(item => item.type === reqType);
+    // 🛠️ FIX: Allowed mixed data structures to bypass type checking for integrated OTT rows
+    const isOttRow = cid.startsWith("ott_");
+    const filteredList = isOttRow ? list : list.filter(item => item.type === reqType);
 
     res.json({ metas: filteredList.slice(skip, skip + 20) });
 });
@@ -267,16 +245,13 @@ app.get("/stream/:type/:id.json", async (req, res) => {
 
         if (rawId.startsWith("tmdb:")) {
             const parts = rawId.split(":");
-            // Safe evaluation across triple block mappings (e.g., tmdb:movie:12345 or tmdb:series:12345)
             mediaType = parts[1] === "series" || parts[1] === "tv" ? "tv" : "movie";
             tmdbId = parts[2];
         } else if (rawId.startsWith("tt")) {
             const findUrl = `https://api.themoviedb.org/3/find/${rawId}?api_key=${TMDB_KEY}&external_source=imdb_id`;
             const findRes = await fetch(findUrl);
             const findData = await findRes.json();
-            
-            const match = (findData.movie_results && findData.movie_results[0]) || 
-                          (findData.tv_results && findData.tv_results[0]);
+            const match = (findData.movie_results && findData.movie_results[0]) || (findData.tv_results && findData.tv_results[0]);
             if (match) {
                 tmdbId = match.id;
                 if (findData.tv_results && findData.tv_results.length > 0) mediaType = "tv";
@@ -292,16 +267,11 @@ app.get("/stream/:type/:id.json", async (req, res) => {
 
         const title = mediaType === "movie" ? detail.title : detail.name;
         const regionProviders = (providersResp.results && providersResp.results[REGION]) || {};
-        const available = [
-          ...(regionProviders.flatrate || []),
-          ...(regionProviders.ads || []),
-          ...(regionProviders.free || []),
-        ];
+        const available = [...(regionProviders.flatrate || []), ...(regionProviders.ads || []), ...(regionProviders.free || [])];
 
         const streams = [];
         for (const target of TARGET_PROVIDERS) {
-          const onThisProvider = available.some((p) => matchProvider(p.provider_name, target));
-          if (onThisProvider) {
+          if (available.some((p) => matchProvider(p.provider_name, target))) {
             let label = target.key.toUpperCase();
             if (target.key === "primevideo") label = "Prime Video";
             if (target.key === "jiohotstar") label = "JioHotstar";
@@ -314,22 +284,16 @@ app.get("/stream/:type/:id.json", async (req, res) => {
             });
           }
         }
-
         res.json({ streams });
-    } catch (err) {
-        console.error(err);
-        res.json({ streams: [] });
-    }
+    } catch (err) { console.error(err); res.json({ streams: [] }); }
 });
 
 app.get("/health", (req, res) => res.json({
-    status: "ok", version: "8.8.0",
+    status: "ok", version: "8.8.1",
     cinema:  masterList.cinema.length,
     tMovies: masterList.tMovies.length,
     netflix: masterList.netflixOTT.length,
-    prime:   masterList.primevideoOTT.length,
-    sonyLiv: masterList.sonylivOTT.length,
-    aha:     masterList.ahaOTT.length
+    prime:   masterList.primevideoOTT.length
 }));
 
-app.listen(PORT, () => console.log("🚀 Tamil Pro Max Ultra 8.8.0 Live"));
+app.listen(PORT, () => console.log("🚀 Live on v8.8.1"));
