@@ -11,28 +11,50 @@ let masterList = {
     dMovies: [], dSeries: [], 
     eMovies: [], eSeries: []
 };
+
 const delay = ms => new Promise(res => setTimeout(res, ms));
+
+// 🛡️ NEW: Auto-retry wrapper to catch premature connection drops
+async function fetchWithRetry(url, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            return data;
+        } catch (e) {
+            console.error(`⚠️ Network drop on attempt ${i + 1}: ${e.code || e.message}`);
+            if (i === retries - 1) return { results: [] }; // Failsafe return
+            await delay(1000 * (i + 1)); // Backoff before retrying
+        }
+    }
+}
 
 async function fetchAllPages(url, pages = 2) {
     let results = [];
     for (let p = 1; p <= pages; p++) {
-        try {
-            const res = await fetch(`${url}&page=${p}`);
-            const data = await res.json();
-            if (data.success === false) {
-                console.error(`TMDB API Error: ${data.status_message}`);
-                return results;
-            }
-            if (data.results) results = results.concat(data.results);
-        } catch (e) { console.error("Fetch error", e); }
+        const data = await fetchWithRetry(`${url}&page=${p}`);
+        
+        if (data && data.success === false) {
+            console.error(`TMDB API Error: ${data.status_message}`);
+            break;
+        }
+        
+        if (data && data.results) {
+            results = results.concat(data.results);
+        }
+        await delay(250); // Pause between pages to respect rate limits
     }
     return results;
 }
 
+// 🛡️ NEW: Sequential fetching instead of Promise.all to prevent ERR_STREAM_PREMATURE_CLOSE
 async function fetchMultiLang(baseUrl, langs, pages = 2) {
-    const promises = langs.map(lang => fetchAllPages(`${baseUrl}&with_original_language=${lang}`, pages));
-    const resultsArrays = await Promise.all(promises);
-    const combined = resultsArrays.flat();
+    const combined = [];
+    for (const lang of langs) {
+        const results = await fetchAllPages(`${baseUrl}&with_original_language=${lang}`, pages);
+        combined.push(...results);
+        await delay(300); // Pause between languages
+    }
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
 }
 
@@ -47,7 +69,7 @@ async function updateDailyList() {
     console.log(`🔄 Sync Started: ${today}`);
 
     if (!TMDB_KEY) {
-        console.error("❌ CRITICAL: TMDB_API_KEY variable is missing from your environment variables!");
+        console.error("❌ CRITICAL: TMDB_API_KEY variable is missing!");
         return;
     }
 
@@ -86,7 +108,9 @@ async function updateDailyList() {
         masterList.cinema = await processItems(cinemaItems.slice(0, 40), 'movie', true);
 
         console.log(`✅ Done! Cinema: ${masterList.cinema.length}, Tamil: ${masterList.tMovies.length}`);
-    } catch (e) { console.error("Sync failed", e); }
+    } catch (e) { 
+        console.error("Sync failed heavily:", e); 
+    }
 }
 
 async function processItems(items, type, isCinema = false) {
@@ -125,7 +149,6 @@ async function convertToPlayable(item, type, isCinema = false) {
             ...(isCinema && { inTheaters: true })
         };
     } catch (e) { 
-        console.error(`Failed rendering item ${item.id}:`, e.message);
         return null; 
     }
 }
@@ -138,7 +161,7 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     res.json({
         id: "com.anandh.tamil.v8.cinema", 
-        version: "8.1.5", 
+        version: "8.1.6", 
         name: "Tamil Pro Max 2025 (v8)", 
         description: "7 Rows - Cinema, Tamil, Dubbed & Hollywood",
         resources: ["catalog"],
@@ -156,7 +179,6 @@ app.get("/manifest.json", (req, res) => {
     });
 });
 
-// 🛠️ FIX: Upgraded layout matrix parameters to catch flexible Stremio skip iterations
 app.get("/catalog/:type/:id/:extra?.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
@@ -181,10 +203,10 @@ app.get("/catalog/:type/:id/:extra?.json", (req, res) => {
 });
 
 app.get("/health", (req, res) => res.json({
-    status: "ok", version: "8.1.5",
+    status: "ok", version: "8.1.6",
     cinema:  masterList.cinema.length,
     tMovies: masterList.tMovies.length,
     tSeries: masterList.tSeries.length,
 }));
 
-app.listen(PORT, () => console.log("🚀 Tamil Pro Max 8.1.5 Live"));
+app.listen(PORT, () => console.log("🚀 Tamil Pro Max 8.1.6 Live"));
