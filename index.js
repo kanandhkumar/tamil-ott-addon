@@ -7,7 +7,9 @@ const PORT = process.env.PORT || 10000;
 const REGION = "IN";
 const LANGUAGE_FILTER = "ta";
 
-// Premium Digital Channels
+// Global diagnostic tracker
+global.diagnosticLog = "Initializing server...";
+
 const TARGET_PROVIDERS = [
   { key: "jiohotstar", matchNames: ["jiohotstar", "disney+ hotstar", "hotstar"], searchUrl: (q) => `https://www.hotstar.com/in/search?q=${encodeURIComponent(q)}` },
   { key: "zee5", matchNames: ["zee5"], searchUrl: (q) => `https://www.zee5.com/search?q=${encodeURIComponent(q)}` },
@@ -32,8 +34,21 @@ async function fetchAllPages(url, pages = 2) {
         try {
             const res = await fetch(`${url}&page=${p}`);
             const data = await res.json();
-            if (data.results) results = results.concat(data.results);
-        } catch (e) { console.error("Fetch error", e); }
+            
+            // Check if TMDB sent back an explicit API error key
+            if (data.success === false) {
+                global.diagnosticLog = `TMDB API Error: ${data.status_message} (Code: ${data.status_code})`;
+                console.error(global.diagnosticLog);
+                return results;
+            }
+            
+            if (data.results) {
+                results = results.concat(data.results);
+            }
+        } catch (e) { 
+            global.diagnosticLog = `Network fetch exception: ${e.message}`;
+            console.error("Fetch error", e); 
+        }
     }
     return results;
 }
@@ -74,6 +89,13 @@ async function updateDailyList() {
     const cinemaLangs = ["ta", "hi", "te", "ml", "kn"];
 
     console.log(`🔄 Sync Started: ${today}`);
+    global.diagnosticLog = `Sync running for date: ${today}...`;
+
+    if (!TMDB_KEY) {
+        global.diagnosticLog = "CRITICAL ERROR: TMDB_API_KEY environment variable is completely missing or undefined on Render!";
+        console.error(global.diagnosticLog);
+        return;
+    }
 
     try {
         const ids = await resolveProviderIds();
@@ -108,7 +130,6 @@ async function updateDailyList() {
         const cinemaItems = rawCinema.filter(m => m.poster_path).sort((a, b) => new Date(b.release_date || 0) - new Date(a.release_date || 0));
         masterList.cinema = await processItems(cinemaItems.slice(0, 40), 'movie', true);
 
-        // Fetch OTT Content
         for (const provider of TARGET_PROVIDERS) {
             const pMovId = ids.movie[provider.key];
             const pTvId = ids.tv[provider.key];
@@ -127,14 +148,17 @@ async function updateDailyList() {
             masterList[`ott_${provider.key}`] = await processItems(combinedOtt.slice(0, 40), 'mixed');
         }
 
+        global.diagnosticLog = "Success! Data hydrated fully from TMDB.";
         console.log(`✅ Done! Cinema: ${masterList.cinema.length}, Tamil: ${masterList.tMovies.length}`);
-    } catch (e) { console.error("Sync failed", e); }
+    } catch (e) { 
+        global.diagnosticLog = `Sync failed with fatal block error: ${e.message}`;
+        console.error("Sync failed", e); 
+    }
 }
 
 async function processItems(items, type, isCinema = false) {
     const list = [];
     for (const item of items) {
-        // Resolve type exactly as v8.1.0 did, handling mixed OTT payloads safely
         const finalType = type === 'mixed' ? item.activeType : type;
         const p = await convertToPlayable(item, finalType, isCinema);
         if (p) list.push(p);
@@ -157,7 +181,6 @@ async function convertToPlayable(item, type, isCinema = false) {
             posterUrl = `https://btttr.cc/poster-q/imdb/poster-default/${ids.imdb_id}.jpg`;
         }
 
-        // EXACT match to your working v8.1.0 ID logic
         const metaObj = {
             id:          ids.imdb_id || `tmdb:${item.id}`,
             name:        isCinema ? `${baseName} 🎬 [IN CINEMA]` : baseName,
@@ -183,10 +206,9 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     res.json({
         id: "com.anandh.tamil.v8.cinema", 
-        version: "8.9.0", 
+        version: "8.9.1", 
         name: "Tamil Pro Max 2026 (v8 OTT)", 
         description: "14 Rows - Cinema, Tamil, Dubbed, Hollywood & Digital OTT Streams",
-        // Added 'stream' to resources alongside your original 'catalog'
         resources: ["catalog", "stream"],
         types: ["movie", "series"],
         catalogs: [
@@ -205,11 +227,10 @@ app.get("/manifest.json", (req, res) => {
             { id: "eng_dub_m",      type: "movie",  name: "Hollywood Hits (Tamil Dub)",   extra: [{ name: "skip", isRequired: false }] },
             { id: "eng_dub_s",      type: "series", name: "Hollywood Series (Tamil Dub)", extra: [{ name: "skip", isRequired: false }] },
         ],
-        idPrefixes: ["tt", "tmdb"] // Reverted to exact v8.1.0 prefixes
+        idPrefixes: ["tt", "tmdb"]
     });
 });
 
-// Reverted to your EXACT v8.1.0 route logic
 app.get("/catalog/:type/:id.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
@@ -236,7 +257,6 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     res.json({ metas: (list || []).slice(skip, skip + 20) });
 });
 
-// Stream endpoint seamlessly integrated on top of the v8.1.0 base
 app.get("/stream/:type/:id.json", async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     try {
@@ -245,7 +265,7 @@ app.get("/stream/:type/:id.json", async (req, res) => {
         let mediaType = req.params.type === "series" ? "tv" : "movie";
 
         if (rawId.startsWith("tmdb:")) {
-            tmdbId = rawId.split(":")[1]; // Correctly matches v8.1.0 "tmdb:12345"
+            tmdbId = rawId.split(":")[1];
         } else if (rawId.startsWith("tt")) {
             const findUrl = `https://api.themoviedb.org/3/find/${rawId}?api_key=${TMDB_KEY}&external_source=imdb_id`;
             const findRes = await fetch(findUrl);
@@ -287,12 +307,18 @@ app.get("/stream/:type/:id.json", async (req, res) => {
     } catch (err) { res.json({ streams: [] }); }
 });
 
+// Upgraded Diagnostics Panel
 app.get("/health", (req, res) => res.json({
-    status: "ok", version: "8.9.0",
-    cinema:  masterList.cinema.length,
-    tMovies: masterList.tMovies.length,
-    netflix: masterList.ott_netflix.length,
-    prime:   masterList.ott_primevideo.length
+    status: "ok", 
+    version: "8.9.1",
+    apiKeySetup: !!TMDB_KEY,
+    message: global.diagnosticLog,
+    counts: {
+        cinema:  masterList.cinema.length,
+        tMovies: masterList.tMovies.length,
+        netflix: masterList.ott_netflix.length,
+        prime:   masterList.ott_primevideo.length
+    }
 }));
 
-app.listen(PORT, () => console.log("🚀 Tamil Pro Max 8.9.0 Live (Rolled Back to v8.1.0 Core)"));
+app.listen(PORT, () => console.log("🚀 Tamil Pro Max 8.9.1 Live"));
