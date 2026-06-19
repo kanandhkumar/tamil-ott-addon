@@ -13,14 +13,34 @@ let masterList = {
 };
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
+// 🛡️ UPDATED: Added retry loop and keep-alive to prevent premature stream closures
 async function fetchAllPages(url, pages = 2) {
     let results = [];
     for (let p = 1; p <= pages; p++) {
-        try {
-            const res = await fetch(`${url}&page=${p}`);
-            const data = await res.json();
-            if (data.results) results = results.concat(data.results);
-        } catch (e) { console.error("Fetch error", e); }
+        let success = false;
+        let attempts = 0;
+        const maxRetries = 3;
+        
+        while (!success && attempts < maxRetries) {
+            try {
+                attempts++;
+                const res = await fetch(`${url}&page=${p}`, {
+                    headers: { 'Connection': 'keep-alive' }
+                });
+                
+                const data = await res.json();
+                if (data.results) results = results.concat(data.results);
+                
+                success = true; 
+            } catch (e) { 
+                console.error(`⚠️ Stream dropped on page ${p} (Attempt ${attempts}/${maxRetries}):`, e.message);
+                if (attempts < maxRetries) {
+                    await delay(1500);
+                } else {
+                    console.error("❌ Failed completely after 3 attempts.");
+                }
+            }
+        }
     }
     return results;
 }
@@ -100,7 +120,7 @@ async function convertToPlayable(item, type, isCinema = false) {
         const year = date ? date.slice(0, 4) : '';
         const baseName = item.title || item.name;
 
-        // 🖼️ NEW POSTER SELECTION: Use custom CDN if IMDb ID exists, fallback to standard TMDB path
+        // 🖼️ UPDATED: Custom poster URL if IMDb ID exists, standard TMDB fallback
         let posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null;
         if (ids.imdb_id) {
             posterUrl = `https://btttr.cc/poster-q/imdb/poster-default/${ids.imdb_id}.jpg`;
@@ -108,6 +128,7 @@ async function convertToPlayable(item, type, isCinema = false) {
 
         const metaObj = {
             id:          ids.imdb_id || `tmdb:${item.id}`,
+            // 🎬 NUVIO FIX: Appends cinema tag to the visual title
             name:        isCinema ? `${baseName} 🎬 [IN CINEMA]` : baseName,
             type:        type === 'movie' ? 'movie' : 'series',
             poster:      posterUrl,
@@ -117,6 +138,7 @@ async function convertToPlayable(item, type, isCinema = false) {
             description: item.overview || `📅 Release Date: ${date || 'N/A'}`,
         };
 
+        // 🎬 STREMIO FIX: Flags official apps to render the ticket banner
         if (isCinema) {
             metaObj.inTheaters = true; 
         }
@@ -133,7 +155,7 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     res.json({
         id: "com.anandh.tamil.v8.cinema", 
-        version: "8.1.0", // Version bumped to 8.1.0
+        version: "8.2.0", // Bumped to clear all caches
         name: "Tamil Pro Max 2025 (v8)", 
         description: "7 Rows - Cinema, Tamil, Dubbed & Hollywood",
         resources: ["catalog"],
@@ -171,10 +193,10 @@ app.get("/catalog/:type/:id.json", (req, res) => {
 });
 
 app.get("/health", (req, res) => res.json({
-    status: "ok", version: "8.1.0",
+    status: "ok", version: "8.2.0",
     cinema:  masterList.cinema.length,
     tMovies: masterList.tMovies.length,
     tSeries: masterList.tSeries.length,
 }));
 
-app.listen(PORT, () => console.log("🚀 Tamil Pro Max 8.1.0 Live"));
+app.listen(PORT, () => console.log("🚀 Tamil Pro Max 8.2.0 Live"));
