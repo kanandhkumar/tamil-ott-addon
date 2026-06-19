@@ -1,4 +1,4 @@
-const express = require("express");
+Const express = require("express");
 const fetch = require("node-fetch");
 const app = express();
 
@@ -100,7 +100,7 @@ async function convertToPlayable(item, type, isCinema = false) {
         const year = date ? date.slice(0, 4) : '';
         const baseName = item.title || item.name;
 
-        // 🖼️ ROBUST POSTER SELECTION: Use custom CDN if IMDb ID exists, fallback to TMDB
+        // 🖼️ NEW POSTER SELECTION: Use custom CDN if IMDb ID exists, fallback to standard TMDB path
         let posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null;
         if (ids.imdb_id) {
             posterUrl = `https://btttr.cc/poster-q/imdb/poster-default/${ids.imdb_id}.jpg`;
@@ -133,7 +133,7 @@ app.get("/manifest.json", (req, res) => {
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     res.json({
         id: "com.anandh.tamil.v8.cinema", 
-        version: "8.1.0", 
+        version: "8.1.0", // Version bumped to 8.1.0
         name: "Tamil Pro Max 2025 (v8)", 
         description: "7 Rows - Cinema, Tamil, Dubbed & Hollywood",
         resources: ["catalog"],
@@ -155,9 +155,8 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     
-    const reqType = req.params.type;
-    const cid     = req.params.id;
-    const skip    = parseInt(req.query.skip || 0);
+    const cid  = req.params.id;
+    const skip = parseInt(req.query.skip || 0);
     let list = [];
     
     if (cid === "tamil_cinema")  list = masterList.cinema;
@@ -168,10 +167,7 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     if (cid === "eng_dub_m")     list = masterList.eMovies;
     if (cid === "eng_dub_s")     list = masterList.eSeries;
     
-    // Filter to ensure only the requested type (movie/series) is returned
-    const filteredList = list.filter(item => item.type === reqType);
-    
-    res.json({ metas: filteredList.slice(skip, skip + 20) });
+    res.json({ metas: (list || []).slice(skip, skip + 20) });
 });
 
 app.get("/health", (req, res) => res.json({
