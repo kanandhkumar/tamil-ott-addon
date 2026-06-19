@@ -13,43 +13,34 @@ let masterList = {
 };
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
-// 🛡️ UPDATED: Added retry loop and keep-alive to prevent premature stream closures
+// 🛡️ SEQUENTIAL RETRY LOGIC: Prevents network saturation crashes
 async function fetchAllPages(url, pages = 2) {
     let results = [];
     for (let p = 1; p <= pages; p++) {
         let success = false;
         let attempts = 0;
-        const maxRetries = 3;
-        
-        while (!success && attempts < maxRetries) {
+        while (!success && attempts < 3) {
             try {
                 attempts++;
-                const res = await fetch(`${url}&page=${p}`, {
-                    headers: { 'Connection': 'keep-alive' }
-                });
-                
+                const res = await fetch(`${url}&page=${p}`, { headers: { 'Connection': 'keep-alive' } });
                 const data = await res.json();
                 if (data.results) results = results.concat(data.results);
-                
-                success = true; 
-            } catch (e) { 
-                console.error(`⚠️ Stream dropped on page ${p} (Attempt ${attempts}/${maxRetries}):`, e.message);
-                if (attempts < maxRetries) {
-                    await delay(1500);
-                } else {
-                    console.error("❌ Failed completely after 3 attempts.");
-                }
+                success = true;
+            } catch (e) {
+                console.error(`⚠️ Attempt ${attempts} failed for ${url} page ${p}:`, e.message);
+                await delay(2000);
             }
         }
     }
     return results;
 }
 
-// Helper function to fetch and combine multiple languages concurrently
 async function fetchMultiLang(baseUrl, langs, pages = 2) {
-    const promises = langs.map(lang => fetchAllPages(`${baseUrl}&with_original_language=${lang}`, pages));
-    const resultsArrays = await Promise.all(promises);
-    const combined = resultsArrays.flat();
+    let combined = [];
+    for (const lang of langs) {
+        const data = await fetchAllPages(`${baseUrl}&with_original_language=${lang}`, pages);
+        combined = combined.concat(data);
+    }
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
 }
 
@@ -58,93 +49,50 @@ async function updateDailyList() {
     const startDate = "2025-01-01";
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const regionalLangs = ["hi", "te", "ml", "kn"];
-    const cinemaLangs = ["ta", "hi", "te", "ml", "kn"];
-
     console.log(`🔄 Sync Started: ${today}`);
 
     try {
-        const tMovieBase   = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`;
-        const tSeriesBase  = `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`;
-        const indMovieBase = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}`;
-        const indSeriesBase= `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&first_air_date.gte=${startDate}&first_air_date.lte=${today}`;
-        const engMovieBase = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`;
-        const engSeriesBase= `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`;
-        const cinemaBase   = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=3&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}`;
-
-        const rawTM = await fetchAllPages(`${tMovieBase}&with_original_language=ta`, 2);
-        const rawTS = await fetchAllPages(`${tSeriesBase}&with_original_language=ta`, 2);
-        const rawEngM = await fetchAllPages(`${engMovieBase}&with_original_language=en`, 3);
-        const rawEngS = await fetchAllPages(`${engSeriesBase}&with_original_language=en`, 3);
-
-        const rawIndM = await fetchMultiLang(indMovieBase, regionalLangs, 2);
-        const rawIndS = await fetchMultiLang(indSeriesBase, regionalLangs, 2);
-        const rawCinema = await fetchMultiLang(cinemaBase, cinemaLangs, 2);
-
-        rawIndM.sort((a, b) => new Date(b.release_date || 0) - new Date(a.release_date || 0));
-        rawIndS.sort((a, b) => new Date(b.first_air_date || 0) - new Date(a.first_air_date || 0));
+        // Sequentially fetching data to ensure network stability
+        masterList.tMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`, 2), 'movie');
+        masterList.tSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, 2), 'tv');
         
-        masterList.tMovies = await processItems(rawTM.slice(0, 50), 'movie');
-        masterList.tSeries = await processItems(rawTS.slice(0, 50), 'tv');
-        masterList.dMovies = await processItems(rawIndM.slice(0, 50), 'movie');
-        masterList.dSeries = await processItems(rawIndS.slice(0, 50), 'tv');
-        masterList.eMovies = await processItems(rawEngM.slice(0, 50), 'movie');
-        masterList.eSeries = await processItems(rawEngS.slice(0, 50), 'tv');
+        masterList.eMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`, 3), 'movie');
+        masterList.eSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`, 3), 'tv');
 
-        const cinemaItems = rawCinema
-            .filter(m => m.poster_path)
-            .sort((a, b) => new Date(b.release_date || 0) - new Date(a.release_date || 0));
+        const indLangs = ["hi", "te", "ml", "kn"];
+        masterList.dMovies = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}`, indLangs, 2), 'movie');
+        masterList.dSeries = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&first_air_date.gte=${startDate}&first_air_date.lte=${today}`, indLangs, 2), 'tv');
         
-        masterList.cinema = await processItems(cinemaItems.slice(0, 40), 'movie', true);
+        const cinemaData = await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=3&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}`, ["ta", "hi", "te", "ml", "kn"], 2);
+        masterList.cinema = await processItems(cinemaData.filter(m => m.poster_path).sort((a, b) => new Date(b.release_date) - new Date(a.release_date)).slice(0, 40), 'movie', true);
 
-        console.log(`✅ Done! Cinema: ${masterList.cinema.length}, Tamil: ${masterList.tMovies.length}`);
+        console.log("✅ Sync Complete.");
     } catch (e) { console.error("Sync failed", e); }
 }
 
 async function processItems(items, type, isCinema = false) {
     const list = [];
     for (const item of items) {
-        const p = await convertToPlayable(item, type, isCinema);
-        if (p) list.push(p);
-        await delay(20);
+        try {
+            const res = await fetch(`https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`);
+            const ids = await res.json();
+            const date = type === 'movie' ? item.release_date : item.first_air_date;
+            
+            list.push({
+                id: ids.imdb_id || `tmdb:${item.id}`,
+                name: isCinema ? `${item.title || item.name} 🎬 [IN CINEMA]` : (item.title || item.name),
+                type: type,
+                poster: ids.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${ids.imdb_id}.jpg` : `https://image.tmdb.org/t/p/w500${item.poster_path}`,
+                releaseInfo: date ? date.slice(0, 4) : '',
+                released: date ? new Date(date).toISOString() : undefined,
+                imdbRating: item.vote_average ? item.vote_average.toFixed(1) : undefined,
+                description: item.overview || `📅 ${date}`,
+                inTheaters: isCinema ? true : undefined
+            });
+            await delay(50);
+        } catch (e) { continue; }
     }
     return list;
-}
-
-async function convertToPlayable(item, type, isCinema = false) {
-    try {
-        const idUrl = `https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`;
-        const res = await fetch(idUrl);
-        const ids = await res.json();
-        const date = type === 'movie' ? item.release_date : item.first_air_date;
-        const year = date ? date.slice(0, 4) : '';
-        const baseName = item.title || item.name;
-
-        // 🖼️ UPDATED: Custom poster URL if IMDb ID exists, standard TMDB fallback
-        let posterUrl = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null;
-        if (ids.imdb_id) {
-            posterUrl = `https://btttr.cc/poster-q/imdb/poster-default/${ids.imdb_id}.jpg`;
-        }
-
-        const metaObj = {
-            id:          ids.imdb_id || `tmdb:${item.id}`,
-            // 🎬 NUVIO FIX: Appends cinema tag to the visual title
-            name:        isCinema ? `${baseName} 🎬 [IN CINEMA]` : baseName,
-            type:        type === 'movie' ? 'movie' : 'series',
-            poster:      posterUrl,
-            releaseInfo: year,
-            released:    date ? new Date(date).toISOString() : undefined,
-            imdbRating:  item.vote_average && item.vote_average > 0 ? item.vote_average.toFixed(1) : undefined,
-            description: item.overview || `📅 Release Date: ${date || 'N/A'}`,
-        };
-
-        // 🎬 STREMIO FIX: Flags official apps to render the ticket banner
-        if (isCinema) {
-            metaObj.inTheaters = true; 
-        }
-
-        return metaObj;
-    } catch (e) { return null; }
 }
 
 updateDailyList();
@@ -152,51 +100,28 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
     res.json({
-        id: "com.anandh.tamil.v8.cinema", 
-        version: "8.2.0", // Bumped to clear all caches
-        name: "Tamil Pro Max 2025 (v8)", 
-        description: "7 Rows - Cinema, Tamil, Dubbed & Hollywood",
+        id: "com.anandh.tamil.v8.cinema",
+        version: "8.3.0",
+        name: "Tamil Pro Max (v8.3)",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: [
-            { id: "tamil_cinema",  type: "movie",  name: "🎬 Now In Cinemas",           extra: [{ name: "skip", isRequired: false }] },
-            { id: "pure_tamil_m",  type: "movie",  name: "New Tamil Movies (Pure)",      extra: [{ name: "skip", isRequired: false }] },
-            { id: "pure_tamil_s",  type: "series", name: "New Tamil Series (Pure)",      extra: [{ name: "skip", isRequired: false }] },
-            { id: "ind_dub_m",     type: "movie",  name: "New Indian Dubbed Movies",     extra: [{ name: "skip", isRequired: false }] },
-            { id: "ind_dub_s",     type: "series", name: "New Indian Dubbed Series",     extra: [{ name: "skip", isRequired: false }] },
-            { id: "eng_dub_m",     type: "movie",  name: "Hollywood Hits (Tamil Dub)",   extra: [{ name: "skip", isRequired: false }] },
-            { id: "eng_dub_s",     type: "series", name: "Hollywood Series (Tamil Dub)", extra: [{ name: "skip", isRequired: false }] },
-        ],
-        idPrefixes: ["tt", "tmdb"]
+            { id: "tamil_cinema",  type: "movie",  name: "🎬 Now In Cinemas" },
+            { id: "pure_tamil_m",  type: "movie",  name: "New Tamil Movies" },
+            { id: "pure_tamil_s",  type: "series", name: "New Tamil Series" },
+            { id: "ind_dub_m",     type: "movie",  name: "New Indian Dubbed Movies" },
+            { id: "ind_dub_s",     type: "series", name: "New Indian Dubbed Series" },
+            { id: "eng_dub_m",     type: "movie",  name: "Hollywood Hits (Tamil Dub)" },
+            { id: "eng_dub_s",     type: "series", name: "Hollywood Series (Tamil Dub)" }
+        ]
     });
 });
 
 app.get("/catalog/:type/:id.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
-    
-    const cid  = req.params.id;
-    const skip = parseInt(req.query.skip || 0);
-    let list = [];
-    
-    if (cid === "tamil_cinema")  list = masterList.cinema;
-    if (cid === "pure_tamil_m")  list = masterList.tMovies;
-    if (cid === "pure_tamil_s")  list = masterList.tSeries;
-    if (cid === "ind_dub_m")     list = masterList.dMovies;
-    if (cid === "ind_dub_s")     list = masterList.dSeries;
-    if (cid === "eng_dub_m")     list = masterList.eMovies;
-    if (cid === "eng_dub_s")     list = masterList.eSeries;
-    
-    res.json({ metas: (list || []).slice(skip, skip + 20) });
+    const lists = { tamil_cinema: masterList.cinema, pure_tamil_m: masterList.tMovies, pure_tamil_s: masterList.tSeries, ind_dub_m: masterList.dMovies, ind_dub_s: masterList.dSeries, eng_dub_m: masterList.eMovies, eng_dub_s: masterList.eSeries };
+    res.json({ metas: (lists[req.params.id] || []).slice(parseInt(req.query.skip || 0), parseInt(req.query.skip || 0) + 20) });
 });
 
-app.get("/health", (req, res) => res.json({
-    status: "ok", version: "8.2.0",
-    cinema:  masterList.cinema.length,
-    tMovies: masterList.tMovies.length,
-    tSeries: masterList.tSeries.length,
-}));
-
-app.listen(PORT, () => console.log("🚀 Tamil Pro Max 8.2.0 Live"));
+app.listen(PORT, () => console.log("🚀 Live v8.3.0"));
