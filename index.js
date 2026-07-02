@@ -55,25 +55,29 @@ async function updateDailyList() {
 
     console.log(`🔄 Sync Started: ${today} (Fetching releases since ${startDate})`);
     try {
-        // Pure Tamil Content (Pages increased to 3 for 60+ items)
+        // Pure Tamil Content
         masterList.tMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`, 3), 'movie');
         masterList.tSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, 3), 'tv');
         
-        // Hollywood Content (Pages increased to 3 for 60+ items)
+        // Hollywood Content
         masterList.eMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`, 3), 'movie');
         masterList.eSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`, 3), 'tv');
 
         // Other Indian Languages (Hindi, Telugu, Malayalam, Kannada)
         const indLangs = ["hi", "te", "ml", "kn"];
         
-        // Fetching 2 pages per language creates a massive pool, which we then sort
-        masterList.dMovies = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`, indLangs, 2), 'movie');
-        masterList.dSeries = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, indLangs, 2), 'tv');
+        // FIX: Fetch the multi-language movies, then explicitly sort them chronologically so Hindi doesn't block out South regional films
+        const rawIndMovies = await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}`, indLangs, 2);
+        rawIndMovies.sort((a, b) => new Date(b.release_date || 0) - new Date(a.release_date || 0));
+        masterList.dMovies = await processItems(rawIndMovies, 'movie');
+
+        // FIX: Do the same chronological sorting for the mixed Indian TV Series
+        const rawIndSeries = await fetchMultiLang(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&first_air_date.gte=${startDate}&first_air_date.lte=${today}`, indLangs, 2);
+        rawIndSeries.sort((a, b) => new Date(b.first_air_date || 0) - new Date(a.first_air_date || 0));
+        masterList.dSeries = await processItems(rawIndSeries, 'tv');
         
         // Now In Cinemas (Includes Tamil + other major regional languages)
         const cinemaData = await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=3&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}`, ["ta", "hi", "te", "ml", "kn"], 2);
-        
-        // Sliced to 50 items for a bigger cinema grid
         masterList.cinema = await processItems(cinemaData.filter(m => m.poster_path).sort((a, b) => new Date(b.release_date) - new Date(a.release_date)).slice(0, 50), 'movie', true);
         
         console.log("✅ Sync Complete.");
@@ -90,7 +94,6 @@ async function processItems(items, type, isCinema = false) {
             list.push({
                 id: data.imdb_id || `tmdb:${item.id}`,
                 name: isCinema ? `${item.title || item.name} 🎬 [IN CINEMA]` : (item.title || item.name),
-                // FIX: Stremio strict type mapping
                 type: type === 'tv' ? 'series' : type,
                 poster: data.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${data.imdb_id}.jpg` : `https://image.tmdb.org/t/p/w500${item.poster_path}`,
                 releaseInfo: date ? date.slice(0, 4) : '',
@@ -111,7 +114,7 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.tamil.v8.cinema", version: "8.4.1", name: "Tamil Pro Max (v8.4.1)",
+        id: "com.anandh.tamil.v8.cinema", version: "8.4.2", name: "Tamil Pro Max (v8.4.2)",
         resources: ["catalog"], types: ["movie", "series"],
         catalogs: [
             { id: "tamil_cinema", type: "movie", name: "🎬 Now In Cinemas" },
@@ -138,8 +141,7 @@ app.get("/catalog/:type/:id.json", (req, res) => {
     };
     
     const skip = parseInt(req.query.skip || 0);
-    // FIX: Increased the Stremio chunk size from 20 to 50 so it renders a massive grid instantly
     res.json({ metas: (lists[req.params.id] || []).slice(skip, skip + 50) });
 });
 
-app.listen(PORT, () => console.log("🚀 Live v8.4.1"));
+app.listen(PORT, () => console.log("🚀 Live v8.4.2"));
