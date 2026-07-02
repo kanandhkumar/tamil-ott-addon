@@ -39,6 +39,7 @@ async function fetchMultiLang(baseUrl, langs, pages = 2) {
         const data = await fetchAllPages(`${baseUrl}&with_original_language=${lang}`, pages);
         combined = combined.concat(data);
     }
+    // Remove duplicates based on TMDB ID
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
 }
 
@@ -49,17 +50,25 @@ async function updateDailyList() {
 
     console.log(`🔄 Sync Started: ${today}`);
     try {
+        // Pure Tamil Content
         masterList.tMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`, 2), 'movie');
         masterList.tSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, 2), 'tv');
+        
+        // Hollywood Content
         masterList.eMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`, 3), 'movie');
         masterList.eSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`, 3), 'tv');
 
+        // Other Indian Languages (Hindi, Telugu, Malayalam, Kannada)
         const indLangs = ["hi", "te", "ml", "kn"];
-        masterList.dMovies = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=4&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}`, indLangs, 2), 'movie');
-        masterList.dSeries = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&first_air_date.gte=${startDate}&first_air_date.lte=${today}`, indLangs, 2), 'tv');
         
+        // FIX: Removed strict 'with_release_type=4' to capture regional South Indian films correctly
+        masterList.dMovies = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`, indLangs, 2), 'movie');
+        masterList.dSeries = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, indLangs, 2), 'tv');
+        
+        // Now In Cinemas (Includes Tamil + other major regional languages)
         const cinemaData = await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=3&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}`, ["ta", "hi", "te", "ml", "kn"], 2);
         masterList.cinema = await processItems(cinemaData.filter(m => m.poster_path).sort((a, b) => new Date(b.release_date) - new Date(a.release_date)).slice(0, 40), 'movie', true);
+        
         console.log("✅ Sync Complete.");
     } catch (e) { console.error("Sync failed", e); }
 }
@@ -70,10 +79,12 @@ async function processItems(items, type, isCinema = false) {
         try {
             const data = await fetchNative(`https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`);
             const date = type === 'movie' ? item.release_date : item.first_air_date;
+            
             list.push({
                 id: data.imdb_id || `tmdb:${item.id}`,
                 name: isCinema ? `${item.title || item.name} 🎬 [IN CINEMA]` : (item.title || item.name),
-                type: type,
+                // FIX: Map TMDB's 'tv' type designation to Stremio's required 'series' type designation
+                type: type === 'tv' ? 'series' : type,
                 poster: data.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${data.imdb_id}.jpg` : `https://image.tmdb.org/t/p/w500${item.poster_path}`,
                 releaseInfo: date ? date.slice(0, 4) : '',
                 released: date ? new Date(date).toISOString() : undefined,
@@ -109,7 +120,15 @@ app.get("/manifest.json", (req, res) => {
 
 app.get("/catalog/:type/:id.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    const lists = { tamil_cinema: masterList.cinema, pure_tamil_m: masterList.tMovies, pure_tamil_s: masterList.tSeries, ind_dub_m: masterList.dMovies, ind_dub_s: masterList.dSeries, eng_dub_m: masterList.eMovies, eng_dub_s: masterList.eSeries };
+    const lists = { 
+        tamil_cinema: masterList.cinema, 
+        pure_tamil_m: masterList.tMovies, 
+        pure_tamil_s: masterList.tSeries, 
+        ind_dub_m: masterList.dMovies, 
+        ind_dub_s: masterList.dSeries, 
+        eng_dub_m: masterList.eMovies, 
+        eng_dub_s: masterList.eSeries 
+    };
     res.json({ metas: (lists[req.params.id] || []).slice(parseInt(req.query.skip || 0), parseInt(req.query.skip || 0) + 20) });
 });
 
