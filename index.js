@@ -21,7 +21,7 @@ function fetchNative(url) {
     });
 }
 
-async function fetchAllPages(url, pages = 2) {
+async function fetchAllPages(url, pages = 3) {
     let results = [];
     for (let p = 1; p <= pages; p++) {
         try {
@@ -45,29 +45,36 @@ async function fetchMultiLang(baseUrl, langs, pages = 2) {
 
 async function updateDailyList() {
     const today = new Date().toISOString().split('T')[0];
-    const startDate = "2025-01-01";
+    
+    // 🗓️ Create a rolling 180-day window to guarantee plenty of recent content
+    const rollingDays = 180;
+    const startDate = new Date(Date.now() - rollingDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    // 60-day window specifically for items currently in cinemas
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    console.log(`🔄 Sync Started: ${today}`);
+    console.log(`🔄 Sync Started: ${today} (Fetching releases since ${startDate})`);
     try {
-        // Pure Tamil Content
-        masterList.tMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`, 2), 'movie');
-        masterList.tSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, 2), 'tv');
+        // Pure Tamil Content (Pages increased to 3 for 60+ items)
+        masterList.tMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=ta&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`, 3), 'movie');
+        masterList.tSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, 3), 'tv');
         
-        // Hollywood Content
+        // Hollywood Content (Pages increased to 3 for 60+ items)
         masterList.eMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`, 3), 'movie');
         masterList.eSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`, 3), 'tv');
 
         // Other Indian Languages (Hindi, Telugu, Malayalam, Kannada)
         const indLangs = ["hi", "te", "ml", "kn"];
         
-        // FIX: Removed strict 'with_release_type=4' to capture regional South Indian films correctly
+        // Fetching 2 pages per language creates a massive pool, which we then sort
         masterList.dMovies = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc`, indLangs, 2), 'movie');
         masterList.dSeries = await processItems(await fetchMultiLang(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, indLangs, 2), 'tv');
         
         // Now In Cinemas (Includes Tamil + other major regional languages)
         const cinemaData = await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=3&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}`, ["ta", "hi", "te", "ml", "kn"], 2);
-        masterList.cinema = await processItems(cinemaData.filter(m => m.poster_path).sort((a, b) => new Date(b.release_date) - new Date(a.release_date)).slice(0, 40), 'movie', true);
+        
+        // Sliced to 50 items for a bigger cinema grid
+        masterList.cinema = await processItems(cinemaData.filter(m => m.poster_path).sort((a, b) => new Date(b.release_date) - new Date(a.release_date)).slice(0, 50), 'movie', true);
         
         console.log("✅ Sync Complete.");
     } catch (e) { console.error("Sync failed", e); }
@@ -83,7 +90,7 @@ async function processItems(items, type, isCinema = false) {
             list.push({
                 id: data.imdb_id || `tmdb:${item.id}`,
                 name: isCinema ? `${item.title || item.name} 🎬 [IN CINEMA]` : (item.title || item.name),
-                // FIX: Map TMDB's 'tv' type designation to Stremio's required 'series' type designation
+                // FIX: Stremio strict type mapping
                 type: type === 'tv' ? 'series' : type,
                 poster: data.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${data.imdb_id}.jpg` : `https://image.tmdb.org/t/p/w500${item.poster_path}`,
                 releaseInfo: date ? date.slice(0, 4) : '',
@@ -104,7 +111,7 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.tamil.v8.cinema", version: "8.4.0", name: "Tamil Pro Max (v8.4)",
+        id: "com.anandh.tamil.v8.cinema", version: "8.4.1", name: "Tamil Pro Max (v8.4.1)",
         resources: ["catalog"], types: ["movie", "series"],
         catalogs: [
             { id: "tamil_cinema", type: "movie", name: "🎬 Now In Cinemas" },
@@ -129,7 +136,10 @@ app.get("/catalog/:type/:id.json", (req, res) => {
         eng_dub_m: masterList.eMovies, 
         eng_dub_s: masterList.eSeries 
     };
-    res.json({ metas: (lists[req.params.id] || []).slice(parseInt(req.query.skip || 0), parseInt(req.query.skip || 0) + 20) });
+    
+    const skip = parseInt(req.query.skip || 0);
+    // FIX: Increased the Stremio chunk size from 20 to 50 so it renders a massive grid instantly
+    res.json({ metas: (lists[req.params.id] || []).slice(skip, skip + 50) });
 });
 
-app.listen(PORT, () => console.log("🚀 Live v8.4.0"));
+app.listen(PORT, () => console.log("🚀 Live v8.4.1"));
