@@ -6,10 +6,8 @@ async function getWeeklyTamilOttReleases() {
     try {
         console.log("🧠 Fetching 30+ OTT releases via Gemini...");
         
-        // Explicitly demanding 30 results and providing fallback search instructions
         const prompt = `Search the live web for movies or series newly available on major OTT platforms in India (Netflix, Prime Video, JioHotstar, Aha, SunNXT, ZEE5, SonyLIV) within the last 21 days that have a TAMIL audio/language option available.
-        This includes movies originally in Tamil, and dubbed versions in Tamil of Telugu, Hindi, Malayalam, Kannada, or English titles.
-        REQUIREMENT: You must provide a list of AT LEAST 30 unique titles. If you cannot find 30 from the last 21 days, include the most recent notable Tamil OTT releases from the last 45 days until you reach 30.
+        REQUIREMENT: You must provide a list of AT LEAST 30 unique titles.
         Return the result strictly as a JSON array of objects. Each object must have a "title" string, a "platform" string, and an "original_language" string.
         Do not include theatrical-only releases. Do not include markdown formatting or extra text.`;
 
@@ -22,8 +20,9 @@ async function getWeeklyTamilOttReleases() {
             }
         });
 
-        // Use the function call response.text()
+        // FIX: The SDK requires calling response.text() as a function
         const rawText = (response.text() || "").trim();
+        
         const cleanText = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
         const data = JSON.parse(cleanText);
 
