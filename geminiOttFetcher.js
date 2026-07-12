@@ -19,7 +19,9 @@ async function getWeeklyTamilOttReleases() {
             }
         });
 
-        const data = JSON.parse(response.text());
+        const rawText = (response.text || "").trim();
+        const cleanText = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+        const data = JSON.parse(cleanText);
 
         return { 
             articleUrl: "Generated via Google Search Grounding", 
