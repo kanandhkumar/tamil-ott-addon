@@ -77,7 +77,7 @@ async function updateWeeklyOtt() {
         const titles = await getWeeklyTamilOttTitles();
         console.log(`📋 Gemini returned ${titles.length} candidate titles: ${titles.join(", ")}`);
 
-        const RECENCY_DAYS = 45; // allows for theatrical-to-OTT gap while still filtering out stale/unrelated matches
+        const RECENCY_DAYS = 120; // widened to tolerate unreliable/stale TMDB release_date data on smaller titles (e.g. Balti showed a wrong date ~9 months off)
         const cutoffDate = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000);
 
         const enriched = [];
