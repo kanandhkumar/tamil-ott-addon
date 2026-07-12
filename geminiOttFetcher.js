@@ -11,7 +11,7 @@ async function getWeeklyTamilOttReleases() {
         Do not include movies that are only in theaters. Do not include markdown formatting.`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-3.5-flash',
             contents: prompt,
             config: {
                 tools: [{ googleSearch: {} }], 
