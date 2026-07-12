@@ -4,12 +4,13 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function getWeeklyTamilOttReleases() {
     try {
-        console.log("🧠 Fetching 30+ OTT releases via Gemini...");
+        console.log("🧠 Fetching 3 weeks of OTT releases via Gemini...");
         
-        const prompt = `Search the live web for movies or series newly available on major OTT platforms in India (Netflix, Prime Video, JioHotstar, Aha, SunNXT, ZEE5, SonyLIV) within the last 21 days that have a TAMIL audio/language option available.
-        REQUIREMENT: You must provide a list of AT LEAST 30 unique titles.
-        Return the result strictly as a JSON array of objects. Each object must have a "title" string, a "platform" string, and an "original_language" string.
-        Do not include theatrical-only releases. Do not include markdown formatting or extra text.`;
+        const prompt = `Search the live web for movies or series newly available on major OTT platforms in India (Netflix, Prime Video, Hotstar/JioHotstar, Aha, SunNXT, ZEE5, SonyLIV) within the last 21 days, where a TAMIL audio/language option exists.
+        Include ALL of the following: movies originally made in Tamil, AND movies/series originally in Telugu, Hindi, Malayalam, Kannada, or English that are dubbed in Tamil or have a Tamil audio track available on the platform.
+        Do NOT filter by original language — filter only by whether Tamil audio is available to viewers.
+        Return the result strictly as a JSON array of objects. Each object must have a "title" string, a "platform" string, and an "original_language" string (e.g. "Tamil", "Telugu", "Hindi").
+        Do not include movies that are only in theaters. Do not include markdown formatting.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-3.5-flash',
@@ -20,12 +21,8 @@ async function getWeeklyTamilOttReleases() {
             }
         });
 
-        // Use response.text() as a function. 
-        // We use a defensive approach to clean any potential markdown formatting 
-        // just in case the API ignores the MIME type hint.
-        let rawText = (typeof response.text === 'function' ? response.text() : "") || "";
-        const cleanText = rawText.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-        
+        const rawText = (response.text || "").trim();
+        const cleanText = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
         const data = JSON.parse(cleanText);
 
         return { 
