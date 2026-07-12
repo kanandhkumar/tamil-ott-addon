@@ -44,7 +44,10 @@ async function fetchMultiLang(baseUrl, langs, pages = 2) {
 
 // Normalize a title for comparison: lowercase, strip punctuation/spaces
 function normalizeTitle(str) {
-    return (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return (str || "")
+        .toLowerCase()
+        .replace(/&/g, "and")     // "Parimala & Co" should match "Parimala and Co"
+        .replace(/[^a-z0-9]/g, "");
 }
 
 // Reject a TMDB result if its title doesn't reasonably match the searched title.
@@ -101,9 +104,6 @@ async function updateWeeklyOtt() {
         const titles = await getWeeklyTamilOttTitles();
         console.log(`📋 Gemini returned ${titles.length} candidate titles: ${titles.join(", ")}`);
 
-        const RECENCY_DAYS = 120; // widened to tolerate unreliable/stale TMDB release_date data on smaller titles (e.g. Balti showed a wrong date ~9 months off)
-        const cutoffDate = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000);
-
         const enriched = [];
         for (const title of titles) {
             try {
@@ -116,18 +116,13 @@ async function updateWeeklyOtt() {
 
                 const { item, type } = found;
                 const releaseDateStr = type === 'movie' ? item.release_date : item.first_air_date;
-                const releaseDate = releaseDateStr ? new Date(releaseDateStr) : null;
 
-                // Recency check: guards against Gemini naming an old/unrelated title that TMDB happens to match
-                if (!releaseDate || releaseDate < cutoffDate) {
-                    console.warn(`⚠️ "${title}" matched TMDB but release date (${releaseDateStr || 'unknown'}) is outside the ${RECENCY_DAYS}-day window — dropped`);
-                    await delay(150);
-                    continue;
-                }
-
+                // Recency is now judged solely by "confirmed streaming in India right now" —
+                // TMDB's release_date field proved unreliable for smaller titles (e.g. Balti was
+                // off by ~290 days), so it's kept for display only, never as a rejection reason.
                 const platform = await getIndiaStreamingProvider(item.id, type);
                 if (!platform) {
-                    console.warn(`⚠️ "${title}" matched TMDB and is recent, but no confirmed India streaming provider yet — dropped`);
+                    console.warn(`⚠️ "${title}" matched TMDB, but no confirmed India streaming provider yet — dropped`);
                     await delay(150);
                     continue;
                 }
