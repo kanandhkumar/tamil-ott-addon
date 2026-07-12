@@ -20,10 +20,12 @@ async function getWeeklyTamilOttReleases() {
             }
         });
 
-        // FIX: The SDK requires calling response.text() as a function
-        const rawText = (response.text() || "").trim();
+        // Use response.text() as a function. 
+        // We use a defensive approach to clean any potential markdown formatting 
+        // just in case the API ignores the MIME type hint.
+        let rawText = (typeof response.text === 'function' ? response.text() : "") || "";
+        const cleanText = rawText.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
         
-        const cleanText = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
         const data = JSON.parse(cleanText);
 
         return { 
