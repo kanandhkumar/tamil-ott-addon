@@ -1,16 +1,17 @@
 const { GoogleGenAI } = require('@google/genai');
 
-// Securely loads your API key from your environment
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function getWeeklyTamilOttReleases() {
     try {
-        console.log("🧠 Fetching expanded list from Filmibeat via Gemini...");
+        console.log("🧠 Fetching 30+ OTT releases via Gemini...");
         
-        // Updated prompt to ensure a robust list of 30+ items
-        const prompt = `Visit https://tamil.filmibeat.com/ott/ and extract all movies listed in the 'Table of Content' or main release list for the last 21 days.
-        Return the result strictly as a JSON array of at least 30 objects. Each object must have a "title" string and a "platform" string. 
-        Do not include movies that are only in theaters. Do not include markdown formatting.`;
+        // Explicitly demanding 30 results and providing fallback search instructions
+        const prompt = `Search the live web for movies or series newly available on major OTT platforms in India (Netflix, Prime Video, JioHotstar, Aha, SunNXT, ZEE5, SonyLIV) within the last 21 days that have a TAMIL audio/language option available.
+        This includes movies originally in Tamil, and dubbed versions in Tamil of Telugu, Hindi, Malayalam, Kannada, or English titles.
+        REQUIREMENT: You must provide a list of AT LEAST 30 unique titles. If you cannot find 30 from the last 21 days, include the most recent notable Tamil OTT releases from the last 45 days until you reach 30.
+        Return the result strictly as a JSON array of objects. Each object must have a "title" string, a "platform" string, and an "original_language" string.
+        Do not include theatrical-only releases. Do not include markdown formatting or extra text.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-3.5-flash',
@@ -21,17 +22,20 @@ async function getWeeklyTamilOttReleases() {
             }
         });
 
-        // FIXED: Added () to .text() to correctly execute the function
-        const data = JSON.parse(response.text());
+        // Use the function call response.text()
+        const rawText = (response.text() || "").trim();
+        const cleanText = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+        const data = JSON.parse(cleanText);
 
         return { 
-            articleUrl: "https://tamil.filmibeat.com/ott/", 
+            articleUrl: "Generated via Google Search Grounding", 
             releases: data.map(movie => ({
                 title: movie.title,
                 platform: movie.platform || "OTT",
+                originalLanguage: movie.original_language || "Tamil",
                 date: new Date().toISOString().split('T')[0],
                 languages: ["Tamil"],
-                raw: `Sourced via Gemini AI • Found on Filmibeat`
+                raw: `Sourced via Gemini AI • ${movie.original_language && movie.original_language !== "Tamil" ? movie.original_language + " (Tamil dub) " : ""}on ${movie.platform}`
             }))
         };
         
