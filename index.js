@@ -66,9 +66,10 @@ async function updateWeeklyOtt() {
                 if (found) {
                     const { item, type } = found;
                     const externalIds = await fetchNative(`https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`);
+                    const isDub = rel.originalLanguage && rel.originalLanguage !== "Tamil";
                     enriched.push({
                         id: externalIds.imdb_id || `tmdb:${item.id}`,
-                        name: `${rel.title} (OTT)`,
+                        name: isDub ? `${rel.title} (${rel.originalLanguage}→Tamil)` : `${rel.title} (OTT)`,
                         type: "movie",
                         poster: externalIds.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${externalIds.imdb_id}.jpg` : `https://image.tmdb.org/t/p/w500${item.poster_path}`,
                         description: `📺 ${rel.raw}\n\n${item.overview || ''}`
