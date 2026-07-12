@@ -50,7 +50,9 @@ async function searchTmdbForTitle(title) {
             if (data.results && data.results.length) {
                 return { item: data.results[0], type };
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error(`⚠️ TMDB search error for "${cleanTitle}" (${type}): ${e.message}`);
+        }
     }
     return null;
 }
@@ -59,6 +61,7 @@ async function updateWeeklyOtt() {
     try {
         console.log("🔄 Weekly OTT sync started...");
         const { releases } = await getWeeklyTamilOttReleases();
+        console.log(`📋 Gemini returned ${releases.length} titles: ${releases.map(r => r.title).join(", ")}`);
         const enriched = [];
         for (const rel of releases) {
             try {
@@ -74,10 +77,15 @@ async function updateWeeklyOtt() {
                         poster: externalIds.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${externalIds.imdb_id}.jpg` : `https://image.tmdb.org/t/p/w500${item.poster_path}`,
                         description: `📺 ${rel.raw}\n\n${item.overview || ''}`
                     });
+                } else {
+                    console.warn(`⚠️ No TMDB match for "${rel.title}" — dropped from catalog`);
                 }
                 await delay(200);
-            } catch (e) { continue; }
+            } catch (e) {
+                console.error(`⚠️ Error processing "${rel.title}": ${e.message}`);
+            }
         }
+        console.log(`✅ Weekly OTT: ${enriched.length}/${releases.length} titles matched and added`);
         if (enriched.length > 0) masterList.weeklyOtt = enriched;
     } catch (e) { console.error("❌ Weekly OTT failed:", e.message); }
 }
