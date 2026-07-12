@@ -2,25 +2,16 @@ const { GoogleGenAI } = require('@google/genai');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const PROMPT = `Search the live web thoroughly and list EVERY movie or series that became newly available on major OTT platforms in India (Netflix, Prime Video, Hotstar/JioHotstar, Aha, SunNXT, ZEE5, SonyLIV) within the last 21 days, where a TAMIL audio/language option exists.
+// Gemini's ONLY job now: name candidate titles. No platform, no date, no language claims —
+// all of that is unreliable from Gemini and gets verified against TMDB in index.js instead.
+const PROMPT = `Search the live web thoroughly and list movies or series that became newly available on OTT platforms in India within the last 21 days, where a Tamil audio/dubbed option exists (this includes Tamil-original films AND Telugu/Hindi/Malayalam/Kannada/English films with a Tamil dub).
 
-Be exhaustive — check FilmiBeat, Cinema Express, The Hindu, Times of India, Pinkvilla, Bollywood Hungama, and OTTplay for weekly OTT release roundups, not just the single most prominent title on each platform.
+Be exhaustive — check FilmiBeat, Cinema Express, The Hindu, OTTplay, and similar sources for weekly OTT roundups. Include smaller/regional titles, not just the most publicized ones.
 
-Include ALL of the following, regardless of original language or genre:
-- Movies originally made in Tamil
-- Movies/series originally in Telugu, Hindi, Malayalam, Kannada, or English that are dubbed in Tamil or have a Tamil audio track available on the platform (e.g. a Hindi courtroom drama or a small-budget regional film with a Tamil dub counts just as much as a big-budget release)
-- Smaller/regional films and straight-to-OTT titles, not just widely publicized ones
-- Web series and documentaries, not just feature films
+Return ONLY a JSON array of strings — just the movie/series titles, nothing else. Example: ["Title One", "Title Two", "Title Three"]
+Do not include markdown formatting, code fences, platform names, or any other text — just the plain JSON array of title strings.
+Do not include duplicate titles.`;
 
-Do NOT filter by original language — filter only by whether Tamil audio is available to viewers.
-Do NOT limit yourself to only the most popular or most-covered titles — aim for a complete list, typically 15-25 titles in a normal week.
-Do NOT include duplicate entries for the same title.
-Do NOT include movies that are only in theaters with no confirmed OTT date yet.
-Return the result strictly as a JSON array of objects. Each object must have a "title" string, a "platform" string, and an "original_language" string (e.g. "Tamil", "Telugu", "Hindi").
-Do not include markdown formatting, code fences, or any text outside the JSON array.`;
-
-// One attempt at calling Gemini and parsing its response into a raw title array.
-// Throws on any failure (network, bad JSON, wrong shape) so the caller can retry.
 async function attemptFetch(attemptNumber) {
     const response = await ai.models.generateContent({
         model: 'gemini-3.5-flash',
@@ -28,7 +19,7 @@ async function attemptFetch(attemptNumber) {
         config: {
             tools: [{ googleSearch: {} }],
             responseMimeType: "application/json",
-            temperature: 0.2 // lower temperature = more consistent, less creative-drift output
+            temperature: 0.2
         }
     });
 
@@ -39,7 +30,7 @@ async function attemptFetch(attemptNumber) {
         throw new Error(`Empty response on attempt ${attemptNumber}`);
     }
 
-    const data = JSON.parse(cleanText); // throws if not valid JSON
+    const data = JSON.parse(cleanText);
 
     if (!Array.isArray(data)) {
         throw new Error(`Response was not a JSON array on attempt ${attemptNumber}`);
@@ -48,54 +39,41 @@ async function attemptFetch(attemptNumber) {
     return data;
 }
 
-// Remove duplicate titles (case-insensitive, ignoring whitespace differences)
-function dedupeByTitle(items) {
+function dedupeTitles(titles) {
     const seen = new Set();
     const result = [];
-    for (const movie of items) {
-        if (!movie || !movie.title) continue;
-        const key = movie.title.trim().toLowerCase().replace(/\s+/g, " ");
-        if (seen.has(key)) continue;
+    for (const t of titles) {
+        if (!t || typeof t !== 'string') continue;
+        const key = t.trim().toLowerCase().replace(/\s+/g, " ");
+        if (seen.has(key) || !key) continue;
         seen.add(key);
-        result.push(movie);
+        result.push(t.trim());
     }
     return result;
 }
 
-async function getWeeklyTamilOttReleases() {
+// Returns just a list of candidate title strings — no metadata.
+// index.js is responsible for verifying each title against TMDB (recency, real existence, etc.)
+async function getWeeklyTamilOttTitles() {
     const MAX_ATTEMPTS = 2;
     let lastError = null;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
-            console.log(`🧠 Fetching Tamil OTT releases via Gemini (attempt ${attempt}/${MAX_ATTEMPTS})...`);
-            const rawData = await attemptFetch(attempt);
-            const data = dedupeByTitle(rawData);
-
-            console.log(`✅ Gemini returned ${rawData.length} titles (${data.length} after dedup)`);
-
-            return {
-                articleUrl: "Generated via Google Search Grounding",
-                releases: data.map(movie => ({
-                    title: movie.title,
-                    platform: movie.platform || "OTT",
-                    originalLanguage: movie.original_language || "Tamil",
-                    date: new Date().toISOString().split('T')[0],
-                    languages: ["Tamil"],
-                    raw: `Sourced via Gemini AI • ${movie.original_language && movie.original_language !== "Tamil" ? movie.original_language + " (Tamil dub) " : ""}on ${movie.platform}`
-                }))
-            };
+            console.log(`🧠 Fetching candidate Tamil OTT titles via Gemini (attempt ${attempt}/${MAX_ATTEMPTS})...`);
+            const rawTitles = await attemptFetch(attempt);
+            const titles = dedupeTitles(rawTitles);
+            console.log(`✅ Gemini returned ${rawTitles.length} titles (${titles.length} after dedup)`);
+            return titles;
         } catch (e) {
             lastError = e;
             console.error(`⚠️ Gemini attempt ${attempt} failed: ${e.message}`);
-            if (attempt < MAX_ATTEMPTS) {
-                console.log("🔄 Retrying...");
-            }
+            if (attempt < MAX_ATTEMPTS) console.log("🔄 Retrying...");
         }
     }
 
     console.error(`❌ Gemini API Error after ${MAX_ATTEMPTS} attempts:`, lastError ? lastError.message : "unknown error");
-    return { articleUrl: "Error", releases: [] };
+    return [];
 }
 
-module.exports = { getWeeklyTamilOttReleases };
+module.exports = { getWeeklyTamilOttTitles };
