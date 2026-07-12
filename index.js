@@ -42,13 +42,37 @@ async function fetchMultiLang(baseUrl, langs, pages = 2) {
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
 }
 
+// Normalize a title for comparison: lowercase, strip punctuation/spaces
+function normalizeTitle(str) {
+    return (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// Reject a TMDB result if its title doesn't reasonably match the searched title.
+// This guards against TMDB's fuzzy search returning an unrelated "closest guess"
+// (e.g. searching "Isakapatnam" incorrectly matching an unrelated 1974 short film).
+function isReasonableMatch(queryTitle, resultTitle) {
+    const q = normalizeTitle(queryTitle);
+    const r = normalizeTitle(resultTitle);
+    if (!q || !r) return false;
+    if (q === r) return true;
+    // Accept if one contains the other (handles subtitle/suffix differences)
+    if (q.length >= 4 && (q.includes(r) || r.includes(q))) return true;
+    return false;
+}
+
 async function searchTmdbForTitle(title) {
     const cleanTitle = title.replace(/\s*\(.*?\)\s*/g, "").trim(); 
     for (const type of ["movie", "tv"]) {
         try {
             const data = await fetchNative(`https://api.themoviedb.org/3/search/${type}?api_key=${TMDB_KEY}&query=${encodeURIComponent(cleanTitle)}&include_adult=false`);
             if (data.results && data.results.length) {
-                return { item: data.results[0], type };
+                // Check the top few results for a genuinely matching title, not just result[0]
+                const match = data.results.slice(0, 5).find(r => isReasonableMatch(cleanTitle, r.title || r.name));
+                if (match) {
+                    return { item: match, type };
+                } else {
+                    console.warn(`⚠️ TMDB had results for "${cleanTitle}" (${type}) but none matched closely enough — e.g. top hit was "${data.results[0].title || data.results[0].name}"`);
+                }
             }
         } catch (e) {
             console.error(`⚠️ TMDB search error for "${cleanTitle}" (${type}): ${e.message}`);
