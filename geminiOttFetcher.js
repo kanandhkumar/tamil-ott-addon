@@ -6,8 +6,10 @@ async function getWeeklyTamilOttReleases() {
     try {
         console.log("🧠 Fetching 3 weeks of OTT releases via Gemini...");
         
-        const prompt = `Search the live web for Tamil movies or series released on major OTT platforms (Netflix, Prime Video, Hotstar, Aha, SunNXT, ZEE5, SonyLIV) within the last 21 days. 
-        Return the result strictly as a JSON array of objects. Each object must have a "title" string and a "platform" string. 
+        const prompt = `Search the live web for movies or series newly available on major OTT platforms in India (Netflix, Prime Video, Hotstar/JioHotstar, Aha, SunNXT, ZEE5, SonyLIV) within the last 21 days, where a TAMIL audio/language option exists.
+        Include ALL of the following: movies originally made in Tamil, AND movies/series originally in Telugu, Hindi, Malayalam, Kannada, or English that are dubbed in Tamil or have a Tamil audio track available on the platform.
+        Do NOT filter by original language — filter only by whether Tamil audio is available to viewers.
+        Return the result strictly as a JSON array of objects. Each object must have a "title" string, a "platform" string, and an "original_language" string (e.g. "Tamil", "Telugu", "Hindi").
         Do not include movies that are only in theaters. Do not include markdown formatting.`;
 
         const response = await ai.models.generateContent({
@@ -28,9 +30,10 @@ async function getWeeklyTamilOttReleases() {
             releases: data.map(movie => ({
                 title: movie.title,
                 platform: movie.platform || "OTT",
+                originalLanguage: movie.original_language || "Tamil",
                 date: new Date().toISOString().split('T')[0],
                 languages: ["Tamil"],
-                raw: `Sourced via Gemini AI • Released on ${movie.platform}`
+                raw: `Sourced via Gemini AI • ${movie.original_language && movie.original_language !== "Tamil" ? movie.original_language + " (Tamil dub) " : ""}on ${movie.platform}`
             }))
         };
         
