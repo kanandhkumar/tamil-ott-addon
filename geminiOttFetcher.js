@@ -1,14 +1,16 @@
 const { GoogleGenAI } = require('@google/genai');
+
+// Securely loads your API key from your environment
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function getWeeklyTamilOttReleases() {
     try {
         console.log("🧠 Fetching expanded list from Filmibeat via Gemini...");
         
-        // Updated prompt to be more aggressive about grabbing the full list
+        // Updated prompt to ensure a robust list of 30+ items
         const prompt = `Visit https://tamil.filmibeat.com/ott/ and extract all movies listed in the 'Table of Content' or main release list for the last 21 days.
         Return the result strictly as a JSON array of at least 30 objects. Each object must have a "title" string and a "platform" string. 
-        Do not skip any titles found in the page list. Do not include markdown formatting.`;
+        Do not include movies that are only in theaters. Do not include markdown formatting.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-3.5-flash',
@@ -19,6 +21,7 @@ async function getWeeklyTamilOttReleases() {
             }
         });
 
+        // FIXED: Added () to .text() to correctly execute the function
         const data = JSON.parse(response.text());
 
         return { 
