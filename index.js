@@ -1,6 +1,6 @@
 const express = require("express");
 const https = require("https");
-const { getWeeklyTamilOttReleases } = require("./geminiOttFetcher");
+const { getWeeklyTamilOttTitles } = require("./geminiOttFetcher");
 
 const app = express();
 const TMDB_KEY = process.env.TMDB_API_KEY;
@@ -57,35 +57,74 @@ async function searchTmdbForTitle(title) {
     return null;
 }
 
+// Check TMDB watch/providers (IN region) — returns the actual streaming platform, or null if not confirmed
+async function getIndiaStreamingProvider(tmdbId, type) {
+    try {
+        const data = await fetchNative(`https://api.themoviedb.org/3/${type}/${tmdbId}/watch/providers?api_key=${TMDB_KEY}`);
+        const inData = data.results && data.results.IN;
+        if (!inData) return null;
+        const providers = inData.flatrate || inData.ads || inData.free;
+        if (!providers || !providers.length) return null;
+        return providers[0].provider_name;
+    } catch (e) {
+        return null;
+    }
+}
+
 async function updateWeeklyOtt() {
     try {
         console.log("🔄 Weekly OTT sync started...");
-        const { releases } = await getWeeklyTamilOttReleases();
-        console.log(`📋 Gemini returned ${releases.length} titles: ${releases.map(r => r.title).join(", ")}`);
+        const titles = await getWeeklyTamilOttTitles();
+        console.log(`📋 Gemini returned ${titles.length} candidate titles: ${titles.join(", ")}`);
+
+        const RECENCY_DAYS = 45; // allows for theatrical-to-OTT gap while still filtering out stale/unrelated matches
+        const cutoffDate = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000);
+
         const enriched = [];
-        for (const rel of releases) {
+        for (const title of titles) {
             try {
-                const found = await searchTmdbForTitle(rel.title);
-                if (found) {
-                    const { item, type } = found;
-                    const externalIds = await fetchNative(`https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`);
-                    const isDub = rel.originalLanguage && rel.originalLanguage !== "Tamil";
-                    enriched.push({
-                        id: externalIds.imdb_id || `tmdb:${item.id}`,
-                        name: isDub ? `${rel.title} (${rel.originalLanguage}→Tamil)` : `${rel.title} (OTT)`,
-                        type: "movie",
-                        poster: externalIds.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${externalIds.imdb_id}.jpg` : `https://image.tmdb.org/t/p/w500${item.poster_path}`,
-                        description: `📺 ${rel.raw}\n\n${item.overview || ''}`
-                    });
-                } else {
-                    console.warn(`⚠️ No TMDB match for "${rel.title}" — dropped from catalog`);
+                const found = await searchTmdbForTitle(title);
+                if (!found) {
+                    console.warn(`⚠️ No TMDB match for "${title}" — dropped`);
+                    await delay(150);
+                    continue;
                 }
+
+                const { item, type } = found;
+                const releaseDateStr = type === 'movie' ? item.release_date : item.first_air_date;
+                const releaseDate = releaseDateStr ? new Date(releaseDateStr) : null;
+
+                // Recency check: guards against Gemini naming an old/unrelated title that TMDB happens to match
+                if (!releaseDate || releaseDate < cutoffDate) {
+                    console.warn(`⚠️ "${title}" matched TMDB but release date (${releaseDateStr || 'unknown'}) is outside the ${RECENCY_DAYS}-day window — dropped`);
+                    await delay(150);
+                    continue;
+                }
+
+                const platform = await getIndiaStreamingProvider(item.id, type);
+                if (!platform) {
+                    console.warn(`⚠️ "${title}" matched TMDB and is recent, but no confirmed India streaming provider yet — dropped`);
+                    await delay(150);
+                    continue;
+                }
+
+                const externalIds = await fetchNative(`https://api.themoviedb.org/3/${type}/${item.id}/external_ids?api_key=${TMDB_KEY}`);
+                enriched.push({
+                    id: externalIds.imdb_id || `tmdb:${item.id}`,
+                    name: `${item.title || item.name} (${platform})`,
+                    type: "movie",
+                    poster: externalIds.imdb_id
+                        ? `https://btttr.cc/poster-q/imdb/poster-default/${externalIds.imdb_id}.jpg`
+                        : (item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : undefined),
+                    releaseInfo: releaseDateStr ? releaseDateStr.slice(0, 4) : '',
+                    description: `📺 Streaming on ${platform} • ${releaseDateStr || ''}\n\n${item.overview || ''}`
+                });
                 await delay(200);
             } catch (e) {
-                console.error(`⚠️ Error processing "${rel.title}": ${e.message}`);
+                console.error(`⚠️ Error processing "${title}": ${e.message}`);
             }
         }
-        console.log(`✅ Weekly OTT: ${enriched.length}/${releases.length} titles matched and added`);
+        console.log(`✅ Weekly OTT: ${enriched.length}/${titles.length} candidate titles verified and added`);
         if (enriched.length > 0) masterList.weeklyOtt = enriched;
     } catch (e) { console.error("❌ Weekly OTT failed:", e.message); }
 }
