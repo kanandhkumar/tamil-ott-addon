@@ -1,4 +1,4 @@
-const express = require("express");
+const express = require("express"); // FIX 1: Lowercase 'const'
 const https = require("https");
 
 const app = express();
@@ -50,16 +50,16 @@ async function updateDailyList() {
     masterList.tSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=ta&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=first_air_date.desc`, 3), 'tv');
     masterList.eMovies = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_original_language=en&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}&sort_by=popularity.desc`, 3), 'movie');
     masterList.eSeries = await processItems(await fetchAllPages(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_original_language=en&first_air_date.gte=${startDate}&first_air_date.lte=${today}&sort_by=popularity.desc`, 3), 'tv');
-    
+
     const indLangs = ["hi", "te", "ml", "kn"];
     const rawIndMovies = await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&primary_release_date.gte=${startDate}&primary_release_date.lte=${today}`, indLangs, 2);
     rawIndMovies.sort((a, b) => new Date(b.release_date || 0) - new Date(a.release_date || 0));
     masterList.dMovies = await processItems(rawIndMovies, 'movie');
-    
+
     const rawIndSeries = await fetchMultiLang(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_KEY}&with_origin_country=IN&first_air_date.gte=${startDate}&first_air_date.lte=${today}`, indLangs, 2);
     rawIndSeries.sort((a, b) => new Date(b.first_air_date || 0) - new Date(a.first_air_date || 0));
     masterList.dSeries = await processItems(rawIndSeries, 'tv');
-    
+
     const cinemaData = await fetchMultiLang(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&region=IN&with_release_type=3&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}`, ["ta", "hi", "te", "ml", "kn"], 2);
     masterList.cinema = await processItems(cinemaData.filter(m => m.poster_path).sort((a, b) => new Date(b.release_date) - new Date(a.release_date)).slice(0, 50), 'movie', true);
 }
@@ -104,11 +104,23 @@ app.get("/manifest.json", (req, res) => {
     });
 });
 
-app.get("/catalog/:type/:id.json", (req, res) => {
+// FIX 2: Added Support for Stremio's native pagination format "/:extra.json"
+app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     const lists = { tamil_cinema: masterList.cinema, pure_tamil_m: masterList.tMovies, pure_tamil_s: masterList.tSeries, ind_dub_m: masterList.dMovies, ind_dub_s: masterList.dSeries, eng_dub_m: masterList.eMovies, eng_dub_s: masterList.eSeries };
-    const skip = parseInt(req.query.skip || 0);
+    
+    let skip = 0;
+    if (req.params.extra) {
+        const match = req.params.extra.match(/skip=(\d+)/);
+        if (match) skip = parseInt(match[1], 10);
+    }
+    
     res.json({ metas: (lists[req.params.id] || []).slice(skip, skip + 50) });
+});
+
+// FIX 3: Dedicated health route for UptimeRobot
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
 });
 
 app.listen(PORT, () => console.log(`🚀 Live v8.5.0 on port ${PORT}`));
