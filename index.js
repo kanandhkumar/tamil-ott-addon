@@ -1,10 +1,14 @@
-const express = require("express"); // FIX 1: Lowercase 'const'
+const express = require("express");
 const https = require("https");
+const sharp = require("sharp");
+const fetch = require("node-fetch");
+const NodeCache = require("node-cache");
 
 const app = express();
 const TMDB_KEY = process.env.TMDB_API_KEY;
 const PORT = process.env.PORT || 10000;
 
+const posterCache = new NodeCache({ stdTTL: 24 * 60 * 60, maxKeys: 500 });
 let masterList = { cinema: [], tMovies: [], tSeries: [], dMovies: [], dSeries: [], eMovies: [], eSeries: [] };
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
@@ -74,7 +78,11 @@ async function processItems(items, type, isCinema = false) {
                 id: data.imdb_id || `tmdb:${item.id}`,
                 name: isCinema ? `${item.title || item.name} 🎬 [IN CINEMA]` : (item.title || item.name),
                 type: type === 'tv' ? 'series' : type,
-                poster: data.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${data.imdb_id}.jpg` : `https://image.tmdb.org/t/p/w500${item.poster_path}`,
+                _posterPath: item.poster_path,
+                _btttrPoster: data.imdb_id ? `https://btttr.cc/poster-q/imdb/poster-default/${data.imdb_id}.jpg` : null,
+                _isCinema: isCinema,
+                _lang: item.original_language,
+                _rating: item.vote_average ? item.vote_average.toFixed(1) : '',
                 releaseInfo: date ? date.slice(0, 4) : '',
                 description: item.overview || `📅 ${date}`,
             });
@@ -90,7 +98,7 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.tamil.v8.cinema", version: "8.5.0", name: "Tamil Pro Max (v8.5.0)",
+        id: "com.anandh.tamil.v8.cinema", version: "8.6.0", name: "Tamil Pro Max (v8.6.0)",
         resources: ["catalog"], types: ["movie", "series"],
         catalogs: [
             { id: "tamil_cinema", type: "movie", name: "🎬 Now In Cinemas" },
@@ -104,9 +112,12 @@ app.get("/manifest.json", (req, res) => {
     });
 });
 
-// FIX 2: Added Support for Stremio's native pagination format "/:extra.json"
 app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
+    
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const hostUrl = `${protocol}://${req.get('host')}`;
+    
     const lists = { tamil_cinema: masterList.cinema, pure_tamil_m: masterList.tMovies, pure_tamil_s: masterList.tSeries, ind_dub_m: masterList.dMovies, ind_dub_s: masterList.dSeries, eng_dub_m: masterList.eMovies, eng_dub_s: masterList.eSeries };
     
     let skip = 0;
@@ -115,12 +126,117 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], (req, res
         if (match) skip = parseInt(match[1], 10);
     }
     
-    res.json({ metas: (lists[req.params.id] || []).slice(skip, skip + 50) });
+    const rawMetas = (lists[req.params.id] || []).slice(skip, skip + 50);
+    
+    const langMap = { 'ta': 'TAMIL', 'te': 'TELUGU', 'hi': 'HINDI', 'ml': 'MALAYALAM', 'kn': 'KANNADA', 'en': 'ENGLISH' };
+
+    const metas = rawMetas.map(m => {
+        const langName = langMap[m._lang] || 'TAMIL';
+        const printType = m._isCinema ? 'CAM' : 'HD'; 
+        const badgeText = `${printType}, ${langName}`;
+        
+        const baseImage = m._posterPath ? `https://image.tmdb.org/t/p/w500${m._posterPath}` : m._btttrPoster;
+
+        const posterUrl = baseImage 
+            ? `${hostUrl}/poster-badge?v=5&badge=${encodeURIComponent(badgeText)}&rating=${encodeURIComponent(m._rating)}&url=${encodeURIComponent(baseImage)}`
+            : null;
+
+        return {
+            id: m.id,
+            type: m.type,
+            name: m.name,
+            poster: posterUrl,
+            releaseInfo: m.releaseInfo,
+            description: m.description
+        };
+    });
+    
+    res.json({ metas });
 });
 
-// FIX 3: Dedicated health route for UptimeRobot
+// ==========================================
+// INTERNAL POSTER BADGING ROUTE
+// ==========================================
+function createBadgeSvg(text) {
+    const cleanText = (text || 'HD').toUpperCase();
+    const width = Math.max(160, cleanText.length * 20 + 48);
+    const height = 64; 
+    return `
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity="0.75"/>
+            </filter>
+        </defs>
+        <rect x="0" y="0" width="${width}" height="${height}" rx="12" ry="12" fill="#ffffff" filter="url(#shadow)"/>
+        <text x="${width / 2}" y="44" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="34" font-weight="900" letter-spacing="1" fill="#111827" text-anchor="middle">${cleanText}</text>
+    </svg>
+    `;
+}
+
+function createRatingSvg(rating) {
+    if (!rating || rating === '0.0') return null;
+    const text = `★ ${rating}`;
+    return `
+    <svg width="130" height="54" viewBox="0 0 130 54" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="shadow-r" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.8"/>
+            </filter>
+        </defs>
+        <rect x="0" y="0" width="130" height="54" rx="10" ry="10" fill="#f5c518" filter="url(#shadow-r)"/>
+        <text x="65" y="37" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="900" fill="#000000" text-anchor="middle">${text}</text>
+    </svg>
+    `;
+}
+
+app.get('/poster-badge', async (req, res) => {
+    const { url, badge, rating } = req.query;
+    if (!url) return res.status(400).send('Missing image URL');
+
+    const cacheKey = `${url}::${badge}::${rating}`;
+    const cached = posterCache.get(cacheKey);
+    
+    if (cached) {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(cached);
+    }
+
+    try {
+        const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!response.ok) throw new Error(`Failed to fetch`);
+        const imageBuffer = await response.buffer();
+
+        const cleanText = (badge || 'HD').toUpperCase();
+        const badgeWidth = Math.max(160, cleanText.length * 20 + 48);
+
+        const composites = [
+            { input: Buffer.from(createBadgeSvg(badge)), top: 12, left: 500 - badgeWidth - 12 }
+        ];
+        
+        const ratingSvg = createRatingSvg(rating);
+        if (ratingSvg) {
+            composites.push({ input: Buffer.from(ratingSvg), top: 750 - 54 - 16, left: 16 });
+        }
+
+        const composited = await sharp(imageBuffer)
+            .resize(500, 750, { fit: 'cover' })
+            .composite(composites)
+            .jpeg({ quality: 85 })
+            .toBuffer();
+
+        posterCache.set(cacheKey, composited);
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.send(composited);
+    } catch (err) {
+        res.redirect(url);
+    }
+});
+
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
-app.listen(PORT, () => console.log(`🚀 Live v8.5.0 on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Live v8.6.0 on port ${PORT}`));
