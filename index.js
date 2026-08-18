@@ -103,8 +103,8 @@ async function processItems(items, type, isCinema = false) {
                 _isCinema: isCinema,
                 _lang: item.original_language,
                 _rating: item.vote_average ? item.vote_average.toFixed(1) : '',
-                releaseInfo: getRelativeRelease(date, isCinema), // INJECTED RELATIVE TIME HERE
-                description: item.overview || `📅 Original Release: ${date}`, // Kept exact date in description so it isn't lost
+                _relativeTime: getRelativeRelease(date, isCinema), // Store time dynamically
+                description: item.overview || `📅 Original Release: ${date}`,
             });
             await delay(50);
         } catch (e) { continue; }
@@ -118,7 +118,7 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.tamil.v8.cinema", version: "8.7.0", name: "Tamil Pro Max",
+        id: "com.anandh.tamil.v8.cinema", version: "8.8.0", name: "Tamil Pro Max",
         resources: ["catalog"], types: ["movie", "series"],
         catalogs: [
             { id: "tamil_cinema", type: "movie", name: "🎬 Now In Cinemas" },
@@ -153,12 +153,16 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], (req, res
     const metas = rawMetas.map(m => {
         const langName = langMap[m._lang] || 'TAMIL';
         const printType = m._isCinema ? 'CAM' : 'HD'; 
-        const badgeText = `${printType}, ${langName}`;
+        
+        // NEW LOGIC: Badge gets the relative time, Release Info gets the Print/Lang
+        const badgeText = m._relativeTime; 
+        const subtitleText = `${printType}, ${langName}`;
         
         const baseImage = m._posterPath ? `https://image.tmdb.org/t/p/w500${m._posterPath}` : m._btttrPoster;
 
+        // v=8 Cache buster
         const posterUrl = baseImage 
-            ? `${hostUrl}/poster-badge?v=6&badge=${encodeURIComponent(badgeText)}&rating=${encodeURIComponent(m._rating)}&url=${encodeURIComponent(baseImage)}`
+            ? `${hostUrl}/poster-badge?v=8&badge=${encodeURIComponent(badgeText)}&rating=${encodeURIComponent(m._rating)}&url=${encodeURIComponent(baseImage)}`
             : null;
 
         return {
@@ -166,7 +170,7 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], (req, res
             type: m.type,
             name: m.name,
             poster: posterUrl,
-            releaseInfo: m.releaseInfo,
+            releaseInfo: subtitleText, // Puts "HD, TAMIL" right under the title
             description: m.description
         };
     });
@@ -178,8 +182,8 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], (req, res
 // INTERNAL POSTER BADGING ROUTE
 // ==========================================
 function createBadgeSvg(text) {
-    const cleanText = (text || 'HD').toUpperCase();
-    const width = Math.max(160, cleanText.length * 20 + 48);
+    const cleanText = (text || '').toUpperCase();
+    const width = Math.max(160, cleanText.length * 20 + 48); // Auto-expands to fit longer text like "1 MONTH AGO"
     const height = 64; 
     return `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -228,7 +232,7 @@ app.get('/poster-badge', async (req, res) => {
         if (!response.ok) throw new Error(`Failed to fetch`);
         const imageBuffer = await response.buffer();
 
-        const cleanText = (badge || 'HD').toUpperCase();
+        const cleanText = (badge || '').toUpperCase();
         const badgeWidth = Math.max(160, cleanText.length * 20 + 48);
 
         const composites = [
@@ -259,4 +263,4 @@ app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
-app.listen(PORT, () => console.log(`🚀 Live v8.7.0 on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Live v8.8.0 on port ${PORT}`));
