@@ -1,6 +1,6 @@
 {
   "name": "tamil-pro-max-addon",
-  "version": "8.6.0",
+  "version": "8.8.0",
   "description": "Stremio Addon for Tamil and Dubbed Content",
   "main": "index.js",
   "scripts": {
