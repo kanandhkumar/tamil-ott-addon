@@ -12,6 +12,26 @@ const posterCache = new NodeCache({ stdTTL: 24 * 60 * 60, maxKeys: 500 });
 let masterList = { cinema: [], tMovies: [], tSeries: [], dMovies: [], dSeries: [], eMovies: [], eSeries: [] };
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
+// ==========================================
+// RELATIVE RELEASE TIME CALCULATOR
+// ==========================================
+function getRelativeRelease(dateString, isCinema) {
+    if (!dateString) return '';
+    const releaseDate = new Date(dateString);
+    const today = new Date();
+    const diffDays = Math.round((today - releaseDate) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return "Upcoming";
+    if (diffDays <= 7) return "This Week";
+    if (diffDays <= 14) return "1 Week Ago";
+    if (diffDays <= 21) return "2 Weeks Ago";
+    if (diffDays <= 30) return "3 Weeks Ago";
+    if (diffDays <= 60) return "1 Month Ago";
+    if (diffDays <= 90) return "2 Months Ago";
+    
+    return isCinema ? "In Cinemas" : "OTT Released";
+}
+
 function fetchNative(url) {
     return new Promise((resolve, reject) => {
         https.get(url, (res) => {
@@ -83,8 +103,8 @@ async function processItems(items, type, isCinema = false) {
                 _isCinema: isCinema,
                 _lang: item.original_language,
                 _rating: item.vote_average ? item.vote_average.toFixed(1) : '',
-                releaseInfo: date ? date.slice(0, 4) : '',
-                description: item.overview || `📅 ${date}`,
+                releaseInfo: getRelativeRelease(date, isCinema), // INJECTED RELATIVE TIME HERE
+                description: item.overview || `📅 Original Release: ${date}`, // Kept exact date in description so it isn't lost
             });
             await delay(50);
         } catch (e) { continue; }
@@ -98,7 +118,7 @@ setInterval(updateDailyList, 12 * 60 * 60 * 1000);
 app.get("/manifest.json", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.json({
-        id: "com.anandh.tamil.v8.cinema", version: "8.6.0", name: "Tamil Pro Max (v8.6.0)",
+        id: "com.anandh.tamil.v8.cinema", version: "8.7.0", name: "Tamil Pro Max",
         resources: ["catalog"], types: ["movie", "series"],
         catalogs: [
             { id: "tamil_cinema", type: "movie", name: "🎬 Now In Cinemas" },
@@ -138,7 +158,7 @@ app.get(["/catalog/:type/:id.json", "/catalog/:type/:id/:extra.json"], (req, res
         const baseImage = m._posterPath ? `https://image.tmdb.org/t/p/w500${m._posterPath}` : m._btttrPoster;
 
         const posterUrl = baseImage 
-            ? `${hostUrl}/poster-badge?v=5&badge=${encodeURIComponent(badgeText)}&rating=${encodeURIComponent(m._rating)}&url=${encodeURIComponent(baseImage)}`
+            ? `${hostUrl}/poster-badge?v=6&badge=${encodeURIComponent(badgeText)}&rating=${encodeURIComponent(m._rating)}&url=${encodeURIComponent(baseImage)}`
             : null;
 
         return {
@@ -239,4 +259,4 @@ app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
-app.listen(PORT, () => console.log(`🚀 Live v8.6.0 on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Live v8.7.0 on port ${PORT}`));
